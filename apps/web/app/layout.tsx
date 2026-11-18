@@ -7,6 +7,11 @@ import { ThemeProvider } from "@/components/theme/ThemeProvider";
 export const metadata: Metadata = {
   title: "Project PULSE — Digital Activity Analytics",
   description: "Cross-Device Digital Activity Analytics Platform for Windows 11",
+  icons: {
+    icon: "/logo.png",
+    shortcut: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({

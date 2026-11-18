@@ -32,8 +32,8 @@ export function Sidebar() {
     <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 h-screen sticky top-0">
       {/* Brand Header */}
       <div className="h-16 flex items-center px-6 gap-3 border-b border-slate-800">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-500 to-emerald-400 flex items-center justify-center shadow-lg shadow-sky-500/20">
-          <Activity className="w-5 h-5 text-white" />
+        <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-950 border border-slate-800 flex items-center justify-center shadow-md shadow-sky-500/10 shrink-0">
+          <img src="/logo.png" alt="Project Pulse Logo" className="w-full h-full object-cover" />
         </div>
         <div>
           <span className="font-bold text-base tracking-wide text-white">PROJECT PULSE</span>
