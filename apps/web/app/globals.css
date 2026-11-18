@@ -12,21 +12,12 @@
   --muted-foreground: #94a3b8;
 }
 
-.light {
-  --background: #f8fafc;
-  --foreground: #0f172a;
-  --card: #ffffff;
-  --card-foreground: #0f172a;
-  --border: #e2e8f0;
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
-}
-
 body {
   color: var(--foreground);
   background: var(--background);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   overflow-x: hidden;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 /* Custom scrollbars */
@@ -43,4 +34,130 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #475569;
+}
+
+/* ========================================================
+   LIGHT MODE OVERRIDES
+   Instantly transforms dark theme colors to crisp light mode
+   ======================================================== */
+
+html.light,
+html[data-theme="light"],
+body.light {
+  color-scheme: light;
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+/* Base backgrounds */
+html.light .bg-slate-950,
+html[data-theme="light"] .bg-slate-950,
+body.light .bg-slate-950 {
+  background-color: #f1f5f9 !important;
+}
+
+html.light .bg-slate-900,
+html[data-theme="light"] .bg-slate-900,
+body.light .bg-slate-900 {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05), 0 1px 2px -1px rgb(0 0 0 / 0.05) !important;
+}
+
+html.light .bg-slate-900\/80,
+html[data-theme="light"] .bg-slate-900\/80,
+body.light .bg-slate-900\/80 {
+  background-color: rgba(255, 255, 255, 0.88) !important;
+  border-color: #e2e8f0 !important;
+}
+
+html.light .bg-slate-900\/60,
+html.light .bg-slate-900\/40,
+html[data-theme="light"] .bg-slate-900\/60,
+html[data-theme="light"] .bg-slate-900\/40 {
+  background-color: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+
+html.light .bg-slate-950\/80,
+html.light .bg-slate-950\/60,
+html.light .bg-slate-950\/40,
+html[data-theme="light"] .bg-slate-950\/80,
+html[data-theme="light"] .bg-slate-950\/60,
+html[data-theme="light"] .bg-slate-950\/40 {
+  background-color: #f1f5f9 !important;
+  border-color: #e2e8f0 !important;
+}
+
+html.light .bg-slate-800,
+html.light .bg-slate-800\/60,
+html.light .bg-slate-800\/40,
+html[data-theme="light"] .bg-slate-800,
+html[data-theme="light"] .bg-slate-800\/60,
+html[data-theme="light"] .bg-slate-800\/40 {
+  background-color: #e2e8f0 !important;
+  border-color: #cbd5e1 !important;
+}
+
+/* Borders */
+html.light .border-slate-800,
+html.light .border-slate-800\/80,
+html.light .border-slate-800\/60,
+html.light .border-slate-800\/40,
+html[data-theme="light"] .border-slate-800,
+html[data-theme="light"] .border-slate-800\/80,
+html[data-theme="light"] .border-slate-800\/60,
+html[data-theme="light"] .border-slate-800\/40 {
+  border-color: #e2e8f0 !important;
+}
+
+html.light .border-slate-700,
+html.light .border-slate-700\/60,
+html[data-theme="light"] .border-slate-700,
+html[data-theme="light"] .border-slate-700\/60 {
+  border-color: #cbd5e1 !important;
+}
+
+/* Typography */
+html.light .text-white,
+html.light .text-slate-100,
+html[data-theme="light"] .text-white,
+html[data-theme="light"] .text-slate-100 {
+  color: #0f172a !important;
+}
+
+html.light .text-slate-200,
+html[data-theme="light"] .text-slate-200 {
+  color: #1e293b !important;
+}
+
+html.light .text-slate-300,
+html[data-theme="light"] .text-slate-300 {
+  color: #334155 !important;
+}
+
+html.light .text-slate-400,
+html[data-theme="light"] .text-slate-400 {
+  color: #64748b !important;
+}
+
+html.light .text-slate-500,
+html[data-theme="light"] .text-slate-500 {
+  color: #94a3b8 !important;
+}
+
+/* Inputs & Selects */
+html.light select,
+html.light input,
+html[data-theme="light"] select,
+html[data-theme="light"] input {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+/* Table dividers */
+html.light .divide-slate-800\/60 > :not([hidden]) ~ :not([hidden]),
+html[data-theme="light"] .divide-slate-800\/60 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #f1f5f9 !important;
 }

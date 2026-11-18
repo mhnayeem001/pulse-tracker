@@ -31,12 +31,21 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const applyTheme = (t: Theme) => {
     const root = document.documentElement;
+    root.setAttribute("data-theme", t);
     if (t === "light") {
       root.classList.remove("dark");
       root.classList.add("light");
+      if (document.body) {
+        document.body.classList.remove("dark");
+        document.body.classList.add("light");
+      }
     } else {
       root.classList.remove("light");
       root.classList.add("dark");
+      if (document.body) {
+        document.body.classList.remove("light");
+        document.body.classList.add("dark");
+      }
     }
   };
 

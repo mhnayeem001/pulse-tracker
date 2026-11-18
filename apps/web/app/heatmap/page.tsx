@@ -298,21 +298,21 @@ export default function ActivityHeatmapPage() {
                 </div>
 
                 {/* Hour Label */}
-                <div className="mt-2 text-center">
+                <div className="mt-2 text-center w-full">
                   <div
-                    className={`text-[11px] font-mono font-medium ${
+                    className={`text-[10px] font-mono tracking-tighter font-semibold ${
                       isSelected
                         ? "text-sky-300 font-bold"
                         : isCurrent
-                        ? "text-sky-400 font-semibold"
+                        ? "text-sky-400 font-bold"
                         : hasActivity
                         ? "text-slate-200"
                         : "text-slate-500"
                     }`}
                   >
-                    {item.hour.toString().padStart(2, "0")}h
+                    {item.hour}-{((item.hour + 1) % 24)}
                   </div>
-                  <div className="text-[10px] font-mono text-slate-400 mt-0.5">
+                  <div className="text-[10px] font-mono text-slate-400 mt-0.5 truncate">
                     {hasActivity ? val.toLocaleString() : "—"}
                   </div>
                 </div>
