@@ -126,8 +126,8 @@ public partial class MainForm : Form
         }
 
         chkAutoStart.Checked = StartupManager.IsStartupEnabled();
-        txtSupabaseUrl.Text = await _storage.GetSettingAsync("supabase_url", "https://your-project.supabase.co") ?? "";
-        txtAnonKey.Text = await _storage.GetSettingAsync("supabase_anon_key", "") ?? "";
+        txtSupabaseUrl.Text = await _storage.GetSettingAsync("supabase_url", "https://izdellrmoeleychjwuzo.supabase.co") ?? "https://izdellrmoeleychjwuzo.supabase.co";
+        txtAnonKey.Text = await _storage.GetSettingAsync("supabase_anon_key", "sb_publishable_T8yJ86FF7FxZKQpCFVoXcw_FTHtnDqt") ?? "sb_publishable_T8yJ86FF7FxZKQpCFVoXcw_FTHtnDqt";
         txtUserEmail.Text = await _storage.GetSettingAsync("user_email", "") ?? "";
 
         _todayTotals = await _storage.GetTodayTotalsAsync();

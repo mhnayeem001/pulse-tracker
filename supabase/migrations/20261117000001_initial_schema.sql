@@ -370,3 +370,14 @@ BEGIN
     );
 END;
 $$;
+
+-- Seed existing auth user profile & settings if user already created
+INSERT INTO public.profiles (id, email, display_name)
+SELECT id, email, COALESCE(raw_user_meta_data->>'full_name', split_part(email, '@', 1))
+FROM auth.users
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.user_settings (user_id, timezone)
+SELECT id, 'Asia/Dhaka'
+FROM auth.users
+ON CONFLICT (user_id) DO NOTHING;
