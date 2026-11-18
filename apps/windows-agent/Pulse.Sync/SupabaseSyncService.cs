@@ -143,7 +143,8 @@ public class SupabaseSyncService : ISyncService
                     mouse_distance = p.MouseDistance,
                     active_seconds = p.ActiveSeconds,
                     idle_seconds = p.IdleSeconds,
-                    session_id = p.SessionId
+                    session_id = p.SessionId,
+                    key_counts = p.KeyCounts
                 }).ToList()
             };
 

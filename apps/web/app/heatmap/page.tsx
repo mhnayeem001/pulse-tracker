@@ -21,6 +21,7 @@ import {
   fetchDevices,
   calculateMetrics,
   formatDuration,
+  aggregateKeyCounts,
   DEMO_DEVICES,
 } from "@/lib/analyticsService";
 import { ActivitySummary, Device, TimeRange } from "@/types";
@@ -205,6 +206,9 @@ export default function ActivityHeatmapPage() {
       currentStreak = 0;
     }
   }
+
+  // Real Hardware Key Counts (from desktop agent vkey telemetry)
+  const realKeyCounts = aggregateKeyCounts(summaries);
 
   return (
     <div className="space-y-8">
@@ -413,6 +417,7 @@ export default function ActivityHeatmapPage() {
           totalKeystrokes={totalMetrics.totalKeyboard}
           deviceName={selectedDeviceName}
           timeRangeLabel={timeRange === "today" ? "Today" : timeRange === "7d" ? "Past 7 Days" : "Past 30 Days"}
+          realKeyCounts={realKeyCounts}
         />
       )}
 

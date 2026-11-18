@@ -33,6 +33,7 @@ export interface ActivitySummary {
   idle_seconds: number;
   session_id: string;
   created_at: string;
+  key_counts?: Record<string, number>;
 }
 
 export interface DashboardMetrics {

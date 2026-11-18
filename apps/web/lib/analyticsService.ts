@@ -395,3 +395,20 @@ export function toDhakaTimeString(utcDateStr: string): string {
     return utcDateStr;
   }
 }
+
+/**
+ * Aggregates hardware key press frequencies across all summaries
+ */
+export function aggregateKeyCounts(summaries: ActivitySummary[]): Record<string, number> {
+  const totals: Record<string, number> = {};
+  for (const s of summaries) {
+    if (s.key_counts && typeof s.key_counts === "object") {
+      for (const [key, count] of Object.entries(s.key_counts)) {
+        if (typeof count === "number" && count > 0) {
+          totals[key] = (totals[key] || 0) + count;
+        }
+      }
+    }
+  }
+  return totals;
+}

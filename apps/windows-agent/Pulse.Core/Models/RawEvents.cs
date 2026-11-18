@@ -20,5 +20,7 @@ public record RawKeyboardEvent
 {
     public bool IsKeyDown { get; init; }
     public bool IsRepeat { get; init; }
+    public ushort VKey { get; init; }
+    public string KeyName { get; init; } = "";
     public DateTime TimestampUtc { get; init; } = DateTime.UtcNow;
 }

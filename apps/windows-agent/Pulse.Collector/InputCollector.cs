@@ -219,15 +219,81 @@ public class InputCollector : IInputCollector
         // Flags bit 30 indicates whether previous state was down (key repeat)
         bool isRepeat = (keyboard.Flags & 0x4000) != 0;
 
+        ushort vKey = keyboard.VKey;
+        string keyName = MapVKeyToKeyId(vKey);
+
         var evt = new RawKeyboardEvent
         {
             IsKeyDown = true,
             IsRepeat = isRepeat,
+            VKey = vKey,
+            KeyName = keyName,
             TimestampUtc = DateTime.UtcNow
         };
 
-        // Notice: We strictly do NOT record MakeCode, VKey, or any characters
+        // Emit privacy-safe hardware button frequency event (No sequence, No text content)
         OnKeyboardInput?.Invoke(evt);
+    }
+
+    public static string MapVKeyToKeyId(ushort vKey)
+    {
+        // Letters: A-Z (0x41 - 0x5A)
+        if (vKey >= 0x41 && vKey <= 0x5A)
+        {
+            return "Key" + (char)vKey;
+        }
+
+        // Digits: 0-9 (0x30 - 0x39)
+        if (vKey >= 0x30 && vKey <= 0x39)
+        {
+            return "Digit" + (char)vKey;
+        }
+
+        // Numpad: 0-9 (0x60 - 0x69)
+        if (vKey >= 0x60 && vKey <= 0x69)
+        {
+            return "Digit" + (char)('0' + (vKey - 0x60));
+        }
+
+        // Function keys: F1-F12 (0x70 - 0x7B)
+        if (vKey >= 0x70 && vKey <= 0x7B)
+        {
+            return "F" + (vKey - 0x70 + 1);
+        }
+
+        return vKey switch
+        {
+            0x20 => "Space",
+            0x08 => "Backspace",
+            0x09 => "Tab",
+            0x0D => "Enter",
+            0x1B => "Escape",
+            0x14 => "CapsLock",
+            0x10 or 0xA0 => "ShiftLeft",
+            0xA1 => "ShiftRight",
+            0x11 or 0xA2 => "ControlLeft",
+            0xA3 => "ControlRight",
+            0x12 or 0xA4 => "AltLeft",
+            0xA5 => "AltRight",
+            0x5B or 0x5C => "MetaLeft",
+            0x2E => "Delete",
+            0x25 => "ArrowLeft",
+            0x26 => "ArrowUp",
+            0x27 => "ArrowRight",
+            0x28 => "ArrowDown",
+            0xBA => "Semicolon",
+            0xBB => "Equal",
+            0xBC => "Comma",
+            0xBD => "Minus",
+            0xBE => "Period",
+            0xBF => "Slash",
+            0xC0 => "Backquote",
+            0xDB => "BracketLeft",
+            0xDC => "Backslash",
+            0xDD => "BracketRight",
+            0xDE => "Quote",
+            _ => "Key" + vKey.ToString("X2")
+        };
     }
 
     public void Dispose()

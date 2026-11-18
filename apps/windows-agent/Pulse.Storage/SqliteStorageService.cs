@@ -86,6 +86,7 @@ public class SqliteStorageService : IStorageService
                     session_id TEXT NOT NULL,
                     is_synced INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
+                    key_counts TEXT DEFAULT '{}',
                     CONSTRAINT uq_device_bucket UNIQUE (device_id, bucket_start)
                 );
 
@@ -117,6 +118,18 @@ public class SqliteStorageService : IStorageService
                 CREATE INDEX IF NOT EXISTS idx_activity_synced ON activity_summaries(is_synced);
             ";
             await cmd.ExecuteNonQueryAsync();
+
+            try
+            {
+                using var alterCmd = connection.CreateCommand();
+                alterCmd.CommandText = "ALTER TABLE activity_summaries ADD COLUMN key_counts TEXT DEFAULT '{}';";
+                await alterCmd.ExecuteNonQueryAsync();
+            }
+            catch
+            {
+                // Column already exists
+            }
+
             _logger?.LogInformation("Local SQLite database initialized successfully at {Connection}", _connectionString);
         }
         catch (Exception ex)
@@ -145,13 +158,13 @@ public class SqliteStorageService : IStorageService
                     left_clicks, right_clicks, middle_clicks, x1_clicks, x2_clicks,
                     keyboard_presses, vertical_scroll, horizontal_scroll,
                     mouse_movement_events, mouse_distance, active_seconds, idle_seconds,
-                    session_id, is_synced, created_at
+                    session_id, is_synced, created_at, key_counts
                 ) VALUES (
                     $id, $device_id, $user_id, $bucket_start, $bucket_end,
                     $left_clicks, $right_clicks, $middle_clicks, $x1_clicks, $x2_clicks,
                     $keyboard_presses, $vertical_scroll, $horizontal_scroll,
                     $mouse_movement_events, $mouse_distance, $active_seconds, $idle_seconds,
-                    $session_id, $is_synced, $created_at
+                    $session_id, $is_synced, $created_at, $key_counts
                 )
                 ON CONFLICT(device_id, bucket_start) DO UPDATE SET
                     left_clicks = excluded.left_clicks,
@@ -165,7 +178,8 @@ public class SqliteStorageService : IStorageService
                     mouse_movement_events = excluded.mouse_movement_events,
                     mouse_distance = excluded.mouse_distance,
                     active_seconds = excluded.active_seconds,
-                    idle_seconds = excluded.idle_seconds;
+                    idle_seconds = excluded.idle_seconds,
+                    key_counts = excluded.key_counts;
             ";
 
             cmd.Parameters.AddWithValue("$id", summary.Id);
@@ -188,6 +202,7 @@ public class SqliteStorageService : IStorageService
             cmd.Parameters.AddWithValue("$session_id", summary.SessionId);
             cmd.Parameters.AddWithValue("$is_synced", summary.IsSynced ? 1 : 0);
             cmd.Parameters.AddWithValue("$created_at", summary.CreatedAtUtc.ToString("O"));
+            cmd.Parameters.AddWithValue("$key_counts", System.Text.Json.JsonSerializer.Serialize(summary.KeyCounts));
 
             await cmd.ExecuteNonQueryAsync();
         }
@@ -212,7 +227,7 @@ public class SqliteStorageService : IStorageService
                        left_clicks, right_clicks, middle_clicks, x1_clicks, x2_clicks,
                        keyboard_presses, vertical_scroll, horizontal_scroll,
                        mouse_movement_events, mouse_distance, active_seconds, idle_seconds,
-                       session_id, is_synced, created_at
+                       session_id, is_synced, created_at, key_counts
                 FROM activity_summaries
                 WHERE is_synced = 0
                 ORDER BY bucket_start ASC
@@ -489,7 +504,7 @@ public class SqliteStorageService : IStorageService
 
     private static ActivitySummary ReadSummary(SqliteDataReader reader)
     {
-        return new ActivitySummary
+        var summary = new ActivitySummary
         {
             Id = reader.GetString(0),
             DeviceId = Guid.Parse(reader.GetString(1)),
@@ -512,6 +527,24 @@ public class SqliteStorageService : IStorageService
             IsSynced = reader.GetInt32(18) == 1,
             CreatedAtUtc = DateTime.Parse(reader.GetString(19))
         };
+
+        if (reader.FieldCount > 20 && !reader.IsDBNull(20))
+        {
+            try
+            {
+                var json = reader.GetString(20);
+                if (!string.IsNullOrWhiteSpace(json))
+                {
+                    summary.KeyCounts = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, int>>(json) ?? new();
+                }
+            }
+            catch
+            {
+                // Fallback to empty
+            }
+        }
+
+        return summary;
     }
 
     public void Dispose()

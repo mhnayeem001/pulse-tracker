@@ -58,6 +58,9 @@ public class ActivitySummary
     [JsonPropertyName("session_id")]
     public string SessionId { get; set; } = "default";
 
+    [JsonPropertyName("key_counts")]
+    public Dictionary<string, int> KeyCounts { get; set; } = new();
+
     [JsonPropertyName("created_at")]
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 

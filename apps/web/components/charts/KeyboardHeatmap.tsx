@@ -27,6 +27,7 @@ interface KeyboardHeatmapProps {
   totalKeystrokes: number;
   deviceName?: string;
   timeRangeLabel?: string;
+  realKeyCounts?: Record<string, number>;
 }
 
 // Calibrated 68-key ANSI layout with empirical typing frequency weights (summing to ~100%)
@@ -133,9 +134,20 @@ export function KeyboardHeatmap({
   totalKeystrokes,
   deviceName = "All Devices",
   timeRangeLabel = "Today",
+  realKeyCounts,
 }: KeyboardHeatmapProps) {
   const [selectedKey, setSelectedKey] = useState<KeyInfo | null>(null);
   const [displayMode, setDisplayMode] = useState<"count" | "percent">("count");
+
+  // Check if real hardware counts were provided by desktop agent
+  const hasRealData = useMemo(() => {
+    return Boolean(realKeyCounts && Object.keys(realKeyCounts).length > 0);
+  }, [realKeyCounts]);
+
+  const totalRealInputs = useMemo(() => {
+    if (!hasRealData || !realKeyCounts) return 0;
+    return Object.values(realKeyCounts).reduce((acc, c) => acc + c, 0);
+  }, [hasRealData, realKeyCounts]);
 
   // Exact sum of weights across all keycaps
   const totalWeight = useMemo(() => {
@@ -148,17 +160,22 @@ export function KeyboardHeatmap({
     return sum;
   }, []);
 
-  // Compute exact count for each key strictly scaling to totalKeystrokes
+  // Compute exact count for each key (preferring 100% real hardware events if available)
   const keyStats = useMemo(() => {
     const stats: Record<string, { count: number; percentage: number; rank: number }> = {};
-    const flatKeys: { id: string; count: number; weight: number }[] = [];
+    const flatKeys: { id: string; count: number }[] = [];
 
-    const safeTotal = Math.max(0, totalKeystrokes);
+    const effectiveTotal = hasRealData && totalRealInputs > 0 ? totalRealInputs : Math.max(0, totalKeystrokes);
 
     for (const row of KEYBOARD_ROWS) {
       for (const k of row) {
-        const count = safeTotal > 0 ? Math.round((k.weight / totalWeight) * safeTotal) : 0;
-        flatKeys.push({ id: k.id, count, weight: k.weight });
+        let count = 0;
+        if (hasRealData && realKeyCounts) {
+          count = realKeyCounts[k.id] || 0;
+        } else {
+          count = effectiveTotal > 0 ? Math.round((k.weight / totalWeight) * effectiveTotal) : 0;
+        }
+        flatKeys.push({ id: k.id, count });
       }
     }
 
@@ -166,7 +183,7 @@ export function KeyboardHeatmap({
     flatKeys.sort((a, b) => b.count - a.count);
 
     flatKeys.forEach((item, index) => {
-      const percentage = safeTotal > 0 ? (item.count / safeTotal) * 100 : 0;
+      const percentage = effectiveTotal > 0 ? (item.count / effectiveTotal) * 100 : 0;
       stats[item.id] = {
         count: item.count,
         percentage: Number(percentage.toFixed(1)),
@@ -175,7 +192,7 @@ export function KeyboardHeatmap({
     });
 
     return stats;
-  }, [totalKeystrokes, totalWeight]);
+  }, [totalKeystrokes, totalWeight, hasRealData, realKeyCounts, totalRealInputs]);
 
   // Default to Space or top key
   const topKeyDef = useMemo(() => {
@@ -247,9 +264,16 @@ export function KeyboardHeatmap({
               <h2 className="text-lg font-bold text-white tracking-tight">
                 Interactive Physical Keyboard Heatmap
               </h2>
-              <span className="px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-rose-500/10 border border-rose-500/30 text-rose-400 flex items-center gap-1">
-                <Flame className="w-3 h-3" /> Heat Intensity
-              </span>
+              {hasRealData ? (
+                <span className="px-2.5 py-0.5 rounded text-[11px] font-mono font-medium bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  Live Hardware VKey Telemetry
+                </span>
+              ) : (
+                <span className="px-2.5 py-0.5 rounded text-[11px] font-mono font-medium bg-rose-500/10 border border-rose-500/30 text-rose-400 flex items-center gap-1">
+                  <Flame className="w-3 h-3" /> Heat Intensity
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
               Exact button-by-button click telemetry across {deviceName} • {timeRangeLabel}

@@ -28,6 +28,7 @@ public class ActivityAggregator : IActivityAggregator
     private double _mouseDistance;
     private int _activeSeconds;
     private int _idleSeconds;
+    private readonly Dictionary<string, int> _keyCounts = new();
 
     public event Action<ActivitySummary>? OnSummaryReady;
 
@@ -95,6 +96,10 @@ public class ActivityAggregator : IActivityAggregator
             if (e.IsKeyDown)
             {
                 _keyboardPresses++;
+                if (!string.IsNullOrEmpty(e.KeyName))
+                {
+                    _keyCounts[e.KeyName] = _keyCounts.GetValueOrDefault(e.KeyName, 0) + 1;
+                }
             }
         }
     }
@@ -175,6 +180,7 @@ public class ActivityAggregator : IActivityAggregator
                 ActiveSeconds = _activeSeconds,
                 IdleSeconds = _idleSeconds,
                 SessionId = _sessionId,
+                KeyCounts = new Dictionary<string, int>(_keyCounts),
                 CreatedAtUtc = now
             };
         }
@@ -208,6 +214,7 @@ public class ActivityAggregator : IActivityAggregator
             ActiveSeconds = Math.Min(60, _activeSeconds),
             IdleSeconds = Math.Min(60, _idleSeconds),
             SessionId = _sessionId,
+            KeyCounts = new Dictionary<string, int>(_keyCounts),
             CreatedAtUtc = now,
             IsSynced = false
         };
@@ -226,6 +233,7 @@ public class ActivityAggregator : IActivityAggregator
         _mouseDistance = 0.0;
         _activeSeconds = 0;
         _idleSeconds = 0;
+        _keyCounts.Clear();
 
         return summary;
     }
