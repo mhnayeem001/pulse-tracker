@@ -54,7 +54,9 @@ export function ActivityTrendChart({ data }: ActivityTrendChartProps) {
             dataKey="laptopClicks"
             name="Personal Laptop (Clicks)"
             stroke="#0ea5e9"
-            strokeWidth={2}
+            strokeWidth={2.5}
+            dot={{ r: 3, fill: "#0ea5e9" }}
+            activeDot={{ r: 6, fill: "#38bdf8" }}
             fillOpacity={1}
             fill="url(#laptopGrad)"
           />
@@ -63,7 +65,9 @@ export function ActivityTrendChart({ data }: ActivityTrendChartProps) {
             dataKey="officeClicks"
             name="Office PC (Clicks)"
             stroke="#10b981"
-            strokeWidth={2}
+            strokeWidth={2.5}
+            dot={{ r: 3, fill: "#10b981" }}
+            activeDot={{ r: 6, fill: "#34d399" }}
             fillOpacity={1}
             fill="url(#officeGrad)"
           />

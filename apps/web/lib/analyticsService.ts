@@ -215,34 +215,20 @@ export function generateHourlyDistribution(range: TimeRange, deviceId?: string):
 
 /**
  * Dynamic Daily Trends:
- * Only displays dates starting from the user's earliest activity or today.
- * If user started today, only shows Today without fabricated past days!
+ * Renders a smooth continuous 7-day rolling timeline with real data for active days,
+ * drawing an elegant connected curve across the chart.
  */
-export function generateDailyFromSummaries(summaries: ActivitySummary[], devices: Device[], maxDays: number = 7): DailyStat[] {
+export function generateDailyFromSummaries(summaries: ActivitySummary[], devices: Device[], days: number = 7): DailyStat[] {
+  const result: DailyStat[] = [];
   const now = new Date();
-
-  // Find unique days present in summaries, plus today
-  const activeDateSet = new Set<string>();
-  activeDateSet.add(now.toISOString().split("T")[0]);
-
-  for (const s of summaries) {
-    if (s.bucket_start) {
-      activeDateSet.add(new Date(s.bucket_start).toISOString().split("T")[0]);
-    }
-  }
-
-  // Sort dates ascending
-  const sortedDates = Array.from(activeDateSet).sort();
-  // Take at most maxDays
-  const datesToShow = sortedDates.slice(-maxDays);
 
   const laptopDevice = devices.find(d => d.device_name.toLowerCase().includes("laptop"));
   const officeDevice = devices.find(d => d.device_name.toLowerCase().includes("office"));
 
-  const result: DailyStat[] = [];
-
-  for (const dateStr of datesToShow) {
-    const d = new Date(dateStr + "T00:00:00Z");
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().split("T")[0];
 
     const daySummaries = summaries.filter(s => {
       const sDate = new Date(s.bucket_start).toISOString().split("T")[0];
