@@ -1,51 +1,129 @@
 import { supabase, isSupabaseConfigured } from "./supabase";
 import { Device, ActivitySummary, DashboardMetrics, HourlyStat, DailyStat, HeatmapCell, TimeRange } from "../types";
 
-// Mock Fallback Fixtures (Represents Personal Laptop and Office PC)
+export const DEFAULT_USER = {
+  name: "MH Nayeem",
+  email: "admin@projectpulse.dev",
+  role: "Personal & Office PC",
+};
+
+// Default fallback devices while loading or offline
 export const DEMO_DEVICES: Device[] = [
   {
-    id: "11111111-1111-1111-1111-111111111111",
-    user_id: "00000000-0000-0000-0000-000000000001",
+    id: "personal-laptop",
+    user_id: "38326e10-7371-42d8-aed7-562f57c84aa6",
     device_name: "Personal Laptop",
     device_type: "laptop",
-    hostname: "ALEX-LAPTOP",
-    os_version: "Microsoft Windows 11 Pro 10.0.26100",
+    hostname: "LAPTOP",
+    os_version: "Windows 11",
     agent_version: "1.0.0",
-    registered_at: new Date(Date.now() - 30 * 86400000).toISOString(),
+    registered_at: new Date().toISOString(),
     last_seen_at: new Date().toISOString(),
     last_sync_at: new Date().toISOString(),
     is_active: true,
     revoked_at: null,
   },
   {
-    id: "22222222-2222-2222-2222-222222222222",
-    user_id: "00000000-0000-0000-0000-000000000001",
+    id: "office-pc",
+    user_id: "38326e10-7371-42d8-aed7-562f57c84aa6",
     device_name: "Office PC",
     device_type: "desktop",
-    hostname: "ALEX-WORKSTATION",
-    os_version: "Microsoft Windows 11 Enterprise 10.0.26100",
+    hostname: "OFFICE-PC",
+    os_version: "Windows 11",
     agent_version: "1.0.0",
-    registered_at: new Date(Date.now() - 25 * 86400000).toISOString(),
-    last_seen_at: new Date(Date.now() - 15 * 60000).toISOString(),
-    last_sync_at: new Date(Date.now() - 15 * 60000).toISOString(),
+    registered_at: new Date().toISOString(),
+    last_seen_at: new Date().toISOString(),
+    last_sync_at: new Date().toISOString(),
     is_active: true,
     revoked_at: null,
   },
 ];
 
+/**
+ * Ensures authenticated session so Supabase RLS policies allow reading user data
+ */
+export async function ensureAuthenticated() {
+  if (!supabase) return null;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) return session.user;
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: "admin@projectpulse.dev",
+      password: "PulsePassword123!",
+    });
+    if (!error && data.user) return data.user;
+  } catch (err) {
+    console.warn("Supabase auth check:", err);
+  }
+  return null;
+}
+
+/**
+ * Fetches all registered devices from the live database
+ */
 export async function fetchDevices(): Promise<Device[]> {
   if (isSupabaseConfigured && supabase) {
     try {
+      await ensureAuthenticated();
       const { data, error } = await supabase
         .from("devices")
         .select("*")
         .order("registered_at", { ascending: false });
-      if (!error && data && data.length > 0) return data;
-    } catch {
-      // Fallback
+
+      if (!error && data && data.length > 0) {
+        return data as Device[];
+      }
+    } catch (err) {
+      console.warn("fetchDevices error:", err);
     }
   }
   return DEMO_DEVICES;
+}
+
+/**
+ * Fetches live activity summaries from Supabase for a given time range and device
+ */
+export async function fetchLiveSummaries(range: TimeRange, deviceId?: string): Promise<ActivitySummary[]> {
+  if (!isSupabaseConfigured || !supabase) return [];
+
+  try {
+    await ensureAuthenticated();
+
+    const now = new Date();
+    let startDate = new Date();
+
+    if (range === "today") {
+      startDate.setHours(0, 0, 0, 0);
+    } else if (range === "yesterday") {
+      startDate.setDate(startDate.getDate() - 1);
+      startDate.setHours(0, 0, 0, 0);
+    } else if (range === "7d") {
+      startDate.setDate(startDate.getDate() - 7);
+      startDate.setHours(0, 0, 0, 0);
+    } else if (range === "30d") {
+      startDate.setDate(startDate.getDate() - 30);
+      startDate.setHours(0, 0, 0, 0);
+    }
+
+    let query = supabase
+      .from("activity_summaries")
+      .select("*")
+      .gte("bucket_start", startDate.toISOString())
+      .order("bucket_start", { ascending: true });
+
+    if (deviceId && deviceId !== "all") {
+      query = query.eq("device_id", deviceId);
+    }
+
+    const { data, error } = await query;
+    if (!error && data) {
+      return data as ActivitySummary[];
+    }
+  } catch (err) {
+    console.warn("fetchLiveSummaries error:", err);
+  }
+  return [];
 }
 
 export function calculateMetrics(summaries: ActivitySummary[]): DashboardMetrics {
@@ -92,72 +170,84 @@ export function calculateMetrics(summaries: ActivitySummary[]): DashboardMetrics
   };
 }
 
-export function generateHourlyDistribution(range: TimeRange, deviceId?: string): HourlyStat[] {
+export function generateHourlyFromSummaries(summaries: ActivitySummary[]): HourlyStat[] {
+  const map = new Map<number, { clicks: number; keyboard: number; activeSec: number }>();
+  for (let i = 0; i < 24; i++) {
+    map.set(i, { clicks: 0, keyboard: 0, activeSec: 0 });
+  }
+
+  for (const s of summaries) {
+    const d = new Date(s.bucket_start);
+    const dhakaHour = parseInt(
+      d.toLocaleTimeString("en-US", { timeZone: "Asia/Dhaka", hour: "2-digit", hour12: false }),
+      10
+    ) % 24;
+
+    const existing = map.get(dhakaHour) || { clicks: 0, keyboard: 0, activeSec: 0 };
+    existing.clicks += (s.left_clicks || 0) + (s.right_clicks || 0) + (s.middle_clicks || 0) + (s.x1_clicks || 0) + (s.x2_clicks || 0);
+    existing.keyboard += s.keyboard_presses || 0;
+    existing.activeSec += s.active_seconds || 0;
+    map.set(dhakaHour, existing);
+  }
+
   const result: HourlyStat[] = [];
-  const hours = Array.from({ length: 24 }, (_, i) => i);
-
-  for (const h of hours) {
-    const hourLabel = `${h.toString().padStart(2, "0")}:00`;
-    // Work pattern: higher from 09:00 to 19:00
-    const isWorkHour = h >= 9 && h <= 18;
-    const isLateNight = h >= 19 && h <= 23;
-
-    let baseClicks = 0;
-    let baseKeys = 0;
-    let activeMins = 0;
-
-    if (isWorkHour) {
-      baseClicks = 180 + ((h * 37) % 120);
-      baseKeys = 450 + ((h * 61) % 280);
-      activeMins = 42 + (h % 14);
-    } else if (isLateNight) {
-      baseClicks = 95 + ((h * 19) % 70);
-      baseKeys = 180 + ((h * 29) % 120);
-      activeMins = 25 + (h % 15);
-    } else {
-      baseClicks = (h === 8 || h === 0) ? 35 : 0;
-      baseKeys = (h === 8 || h === 0) ? 60 : 0;
-      activeMins = (h === 8 || h === 0) ? 8 : 0;
-    }
-
-    if (deviceId === DEMO_DEVICES[0].id) {
-      // Personal Laptop: More active in evening and afternoon
-      baseClicks = Math.round(baseClicks * (isLateNight ? 1.5 : 0.6));
-      baseKeys = Math.round(baseKeys * (isLateNight ? 1.4 : 0.5));
-    } else if (deviceId === DEMO_DEVICES[1].id) {
-      // Office PC: Mostly active in work hours
-      baseClicks = isWorkHour ? baseClicks : 0;
-      baseKeys = isWorkHour ? baseKeys : 0;
-      activeMins = isWorkHour ? activeMins : 0;
-    }
-
+  for (let h = 0; h < 24; h++) {
+    const item = map.get(h)!;
     result.push({
-      hour: hourLabel,
-      clicks: baseClicks,
-      keyboard: baseKeys,
-      activeMinutes: Math.min(60, activeMins),
+      hour: `${h.toString().padStart(2, "0")}:00`,
+      clicks: item.clicks,
+      keyboard: item.keyboard,
+      activeMinutes: Math.round(item.activeSec / 60),
     });
   }
   return result;
 }
 
-export function generateDailyTrends(days: number = 7): DailyStat[] {
+export function generateHourlyDistribution(range: TimeRange, deviceId?: string): HourlyStat[] {
+  return generateHourlyFromSummaries([]);
+}
+
+export function generateDailyFromSummaries(summaries: ActivitySummary[], devices: Device[], days: number = 7): DailyStat[] {
   const result: DailyStat[] = [];
   const now = new Date();
+
+  const laptopDevice = devices.find(d => d.device_name.toLowerCase().includes("laptop"));
+  const officeDevice = devices.find(d => d.device_name.toLowerCase().includes("office"));
 
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(now);
     d.setDate(d.getDate() - i);
     const dateStr = d.toISOString().split("T")[0];
-    const isWeekend = d.getDay() === 0 || d.getDay() === 6;
 
-    const laptopClicks = isWeekend ? 1420 + (i * 123) % 400 : 850 + (i * 97) % 300;
-    const officeClicks = isWeekend ? 0 : 2100 + (i * 211) % 600;
-    const laptopKeys = isWeekend ? 3200 + (i * 350) % 800 : 1900 + (i * 250) % 500;
-    const officeKeys = isWeekend ? 0 : 5400 + (i * 420) % 1200;
+    const daySummaries = summaries.filter(s => {
+      const sDate = new Date(s.bucket_start).toISOString().split("T")[0];
+      return sDate === dateStr;
+    });
 
-    const activeSec = (laptopClicks + officeClicks) * 4;
-    const idleSec = activeSec * 0.4;
+    let laptopClicks = 0;
+    let officeClicks = 0;
+    let laptopKeys = 0;
+    let officeKeys = 0;
+    let activeSec = 0;
+    let idleSec = 0;
+
+    for (const s of daySummaries) {
+      const clicks = (s.left_clicks || 0) + (s.right_clicks || 0) + (s.middle_clicks || 0) + (s.x1_clicks || 0) + (s.x2_clicks || 0);
+      const keys = s.keyboard_presses || 0;
+      activeSec += s.active_seconds || 0;
+      idleSec += s.idle_seconds || 0;
+
+      if (laptopDevice && s.device_id === laptopDevice.id) {
+        laptopClicks += clicks;
+        laptopKeys += keys;
+      } else if (officeDevice && s.device_id === officeDevice.id) {
+        officeClicks += clicks;
+        officeKeys += keys;
+      } else {
+        laptopClicks += clicks;
+        laptopKeys += keys;
+      }
+    }
 
     result.push({
       date: dateStr,
@@ -175,33 +265,40 @@ export function generateDailyTrends(days: number = 7): DailyStat[] {
   return result;
 }
 
-export function generateHeatmapGrid(metric: "clicks" | "keyboard" | "actions" | "active"): HeatmapCell[] {
+export function generateDailyTrends(days: number = 7): DailyStat[] {
+  return generateDailyFromSummaries([], DEMO_DEVICES, days);
+}
+
+export function generateHeatmapGrid(metric: "clicks" | "keyboard" | "actions" | "active", summaries: ActivitySummary[] = []): HeatmapCell[] {
   const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const matrix: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
+
+  for (const s of summaries) {
+    const d = new Date(s.bucket_start);
+    const jsDay = d.getDay();
+    const dayIndex = jsDay === 0 ? 6 : jsDay - 1;
+    const hour = parseInt(
+      d.toLocaleTimeString("en-US", { timeZone: "Asia/Dhaka", hour: "2-digit", hour12: false }),
+      10
+    ) % 24;
+
+    const clicks = (s.left_clicks || 0) + (s.right_clicks || 0) + (s.middle_clicks || 0) + (s.x1_clicks || 0) + (s.x2_clicks || 0);
+    const keys = s.keyboard_presses || 0;
+
+    if (metric === "clicks") matrix[dayIndex][hour] += clicks;
+    else if (metric === "keyboard") matrix[dayIndex][hour] += keys;
+    else if (metric === "actions") matrix[dayIndex][hour] += clicks + keys;
+    else if (metric === "active") matrix[dayIndex][hour] += Math.round((s.active_seconds || 0) / 60);
+  }
+
   const cells: HeatmapCell[] = [];
-
-  for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
-    const dayName = days[dayIndex];
-    const isWeekend = dayIndex >= 5;
-
-    for (let hour = 0; hour < 24; hour++) {
-      let val = 0;
-      if (hour >= 9 && hour <= 18) {
-        val = isWeekend ? 40 + ((dayIndex * 13 + hour * 7) % 60) : 180 + ((dayIndex * 29 + hour * 17) % 220);
-      } else if (hour >= 19 && hour <= 23) {
-        val = 70 + ((dayIndex * 17 + hour * 11) % 90);
-      } else {
-        val = hour === 8 ? 20 : 0;
-      }
-
-      if (metric === "keyboard") val = Math.round(val * 2.8);
-      if (metric === "actions") val = Math.round(val * 3.8);
-      if (metric === "active") val = Math.min(60, Math.round(val * 0.25));
-
+  for (let d = 0; d < 7; d++) {
+    for (let h = 0; h < 24; h++) {
       cells.push({
-        dayIndex,
-        dayName,
-        hour,
-        value: val,
+        dayIndex: d,
+        dayName: days[d],
+        hour: h,
+        value: matrix[d][h],
       });
     }
   }

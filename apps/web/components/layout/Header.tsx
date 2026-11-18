@@ -56,10 +56,10 @@ export function Header() {
         {/* User Pill */}
         <div className="flex items-center gap-2.5 pl-2 border-l border-slate-800">
           <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-sky-500 to-indigo-500 flex items-center justify-center text-xs font-bold text-white shadow">
-            AV
+            MN
           </div>
           <div className="hidden lg:block text-left text-xs">
-            <div className="font-semibold text-slate-200">Alex Vance</div>
+            <div className="font-semibold text-slate-200">MH Nayeem</div>
             <div className="text-[11px] text-slate-500">Personal & Office</div>
           </div>
         </div>

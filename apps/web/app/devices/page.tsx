@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Laptop,
   Monitor,
@@ -14,21 +14,44 @@ import {
 } from "lucide-react";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { HourlyBarChart } from "@/components/charts/HourlyBarChart";
-import { DEMO_DEVICES, formatDuration, generateHourlyDistribution, toDhakaTimeString } from "@/lib/analyticsService";
+import {
+  DEMO_DEVICES,
+  fetchDevices,
+  fetchLiveSummaries,
+  calculateMetrics,
+  generateHourlyFromSummaries,
+  formatDuration,
+  toDhakaTimeString,
+} from "@/lib/analyticsService";
+import { Device, ActivitySummary } from "@/types";
 
 export default function DeviceAnalyticsPage() {
+  const [devices, setDevices] = useState<Device[]>(DEMO_DEVICES);
   const [selectedId, setSelectedId] = useState<string>(DEMO_DEVICES[0].id);
+  const [summaries, setSummaries] = useState<ActivitySummary[]>([]);
 
-  const currentDevice = DEMO_DEVICES.find((d) => d.id === selectedId) || DEMO_DEVICES[0];
-  const isLaptop = currentDevice.device_type === "laptop";
+  useEffect(() => {
+    fetchDevices().then((list) => {
+      setDevices(list);
+      if (list.length > 0 && !list.find(d => d.id === selectedId)) {
+        setSelectedId(list[0].id);
+      }
+    });
+  }, []);
 
-  // Device-specific stats
-  const clicks = isLaptop ? 1845 : 3420;
-  const keys = isLaptop ? 3820 : 8140;
-  const activeSec = isLaptop ? 4 * 3600 + 18 * 60 : 7 * 3600 + 45 * 60;
-  const idleSec = isLaptop ? 2 * 3600 + 10 * 60 : 1 * 3600 + 30 * 60;
+  useEffect(() => {
+    if (selectedId) {
+      fetchLiveSummaries("today", selectedId).then((res) => {
+        setSummaries(res);
+      });
+    }
+  }, [selectedId]);
 
-  const hourlyData = generateHourlyDistribution("today", currentDevice.id);
+  const currentDevice = devices.find((d) => d.id === selectedId) || devices[0];
+  const isLaptop = currentDevice?.device_type === "laptop" || currentDevice?.device_name?.toLowerCase().includes("laptop");
+
+  const metrics = calculateMetrics(summaries);
+  const hourlyData = generateHourlyFromSummaries(summaries);
 
   return (
     <div className="space-y-8">
@@ -45,7 +68,7 @@ export default function DeviceAnalyticsPage() {
 
         {/* Switch Device Tabs */}
         <div className="flex bg-slate-900 border border-slate-800 p-1 rounded-xl">
-          {DEMO_DEVICES.map((d) => (
+          {devices.map((d) => (
             <button
               key={d.id}
               onClick={() => setSelectedId(d.id)}
@@ -62,125 +85,88 @@ export default function DeviceAnalyticsPage() {
         </div>
       </div>
 
-      {/* Device Specification Banner */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
-        <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center shrink-0">
-            {isLaptop ? <Laptop className="w-6 h-6 text-sky-400" /> : <Monitor className="w-6 h-6 text-emerald-400" />}
+      {/* Device Info Banner */}
+      <div className="p-6 rounded-2xl bg-gradient-to-r from-slate-900 to-slate-950 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400">
+            {isLaptop ? <Laptop className="w-6 h-6" /> : <Monitor className="w-6 h-6" />}
           </div>
           <div>
-            <div className="flex items-center gap-3">
-              <h2 className="text-xl font-bold text-white">{currentDevice.device_name}</h2>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                <CheckCircle2 className="w-3 h-3" />
-                Active & Synced
+            <div className="flex items-center gap-2.5">
+              <h2 className="text-lg font-bold text-white">{currentDevice.device_name}</h2>
+              <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
+                currentDevice.is_active
+                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                  : "bg-rose-500/10 text-rose-400 border-rose-500/20"
+              }`}>
+                {currentDevice.is_active ? "● Online / Active" : "Inactive"}
               </span>
             </div>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-slate-400 font-mono">
-              <span>Host: <strong className="text-slate-200 font-sans">{currentDevice.hostname}</strong></span>
-              <span>OS: <strong className="text-slate-200 font-sans">{currentDevice.os_version}</strong></span>
-              <span>Agent: <strong className="text-slate-200 font-sans">v{currentDevice.agent_version}</strong></span>
-            </div>
+            <p className="text-xs text-slate-400 font-mono mt-0.5">
+              Host: {currentDevice.hostname} • OS: {currentDevice.os_version} • Agent v{currentDevice.agent_version}
+            </p>
           </div>
         </div>
 
-        <div className="flex flex-col text-xs text-slate-400 border-t md:border-t-0 md:border-l border-slate-800 pt-4 md:pt-0 md:pl-6 space-y-1 font-mono">
-          <div>Last Seen: <span className="text-slate-200">{toDhakaTimeString(currentDevice.last_seen_at)}</span></div>
-          <div>Last Sync: <span className="text-slate-200">{toDhakaTimeString(currentDevice.last_sync_at || "")}</span></div>
-          <div>Registered: <span className="text-slate-200">{toDhakaTimeString(currentDevice.registered_at)}</span></div>
+        <div className="flex items-center gap-6 text-xs text-slate-400 border-t md:border-t-0 md:border-l border-slate-800 pt-4 md:pt-0 md:pl-6">
+          <div>
+            <div className="text-[11px] text-slate-500 font-medium">Last Sync</div>
+            <div className="text-slate-200 font-mono font-medium mt-0.5">
+              {currentDevice.last_sync_at ? toDhakaTimeString(currentDevice.last_sync_at) : "Never"}
+            </div>
+          </div>
+          <div>
+            <div className="text-[11px] text-slate-500 font-medium">Registered At</div>
+            <div className="text-slate-200 font-mono font-medium mt-0.5">
+              {toDhakaTimeString(currentDevice.registered_at)}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+      {/* Metrics Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
-          title="Clicks"
-          value={clicks.toLocaleString()}
-          subtitle="Total mouse presses"
+          title="Mouse Clicks"
+          value={metrics.totalClicks.toLocaleString()}
+          subtitle="All buttons combined"
           icon={MousePointerClick}
           color="sky"
         />
         <MetricCard
           title="Key Presses"
-          value={keys.toLocaleString()}
-          subtitle="Total key-downs"
+          value={metrics.totalKeyboard.toLocaleString()}
+          subtitle="Typing input volume"
           icon={Keyboard}
           color="purple"
         />
         <MetricCard
           title="Active Time"
-          value={formatDuration(activeSec)}
-          subtitle="Engagement duration"
+          value={formatDuration(metrics.activeSeconds)}
+          subtitle="Engaged in computer work"
           icon={Clock}
           color="emerald"
         />
         <MetricCard
           title="Idle Time"
-          value={formatDuration(idleSec)}
-          subtitle="Away duration"
+          value={formatDuration(metrics.idleSeconds)}
+          subtitle="Logged in but away"
           icon={Coffee}
           color="amber"
         />
-        <MetricCard
-          title="Scroll Amount"
-          value={(clicks * 3.8).toFixed(0)}
-          subtitle="Wheel delta"
-          icon={Scroll}
-          color="rose"
-        />
-        <MetricCard
-          title="Mouse Distance"
-          value={`${((clicks * 22.4) / 1000).toFixed(1)}k px`}
-          subtitle="Pixel displacement"
-          icon={Navigation}
-          color="sky"
-        />
       </div>
 
-      {/* Device Hourly Chart & Button Distribution */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-base font-semibold text-white">
-                {currentDevice.device_name} — Today's Hourly Breakdown
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">Distribution of clicks and keyboard activity by hour</p>
-            </div>
-          </div>
-          <HourlyBarChart data={hourlyData} />
-        </div>
-
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 flex flex-col justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-white mb-1">Click Breakdown</h2>
-            <p className="text-xs text-slate-400 mb-4">Distribution by mouse button</p>
-
-            <div className="space-y-3 text-xs">
-              <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-950/50 border border-slate-800">
-                <span className="text-slate-300">Left Clicks</span>
-                <span className="font-mono font-bold text-sky-400">{(clicks * 0.72).toFixed(0)} (72%)</span>
-              </div>
-              <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-950/50 border border-slate-800">
-                <span className="text-slate-300">Right Clicks</span>
-                <span className="font-mono font-bold text-indigo-400">{(clicks * 0.18).toFixed(0)} (18%)</span>
-              </div>
-              <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-950/50 border border-slate-800">
-                <span className="text-slate-300">Middle Clicks</span>
-                <span className="font-mono font-bold text-emerald-400">{(clicks * 0.07).toFixed(0)} (7%)</span>
-              </div>
-              <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-950/50 border border-slate-800">
-                <span className="text-slate-300">X1 / X2 Clicks</span>
-                <span className="font-mono font-bold text-amber-400">{(clicks * 0.03).toFixed(0)} (3%)</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6 p-3 rounded-lg bg-sky-500/10 border border-sky-500/20 text-xs text-slate-300">
-            <strong className="text-sky-400 block mb-0.5">Privacy Notice:</strong>
-            All inputs are collected via raw hardware counters. Zero keystrokes, characters, or coordinates are stored.
-          </div>
-        </div>
+      {/* Device Hourly Chart */}
+      <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800">
+        <h3 className="text-base font-semibold text-white mb-1">
+          {currentDevice?.device_name} — Today&apos;s Hourly Activity Pattern
+        </h3>
+        <p className="text-xs text-slate-400 mb-6">
+          Click and keyboard actions distributed by hour (Asia/Dhaka time)
+        </p>
+        <HourlyBarChart
+          data={hourlyData}
+        />
       </div>
     </div>
   );

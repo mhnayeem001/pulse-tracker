@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Cpu, Laptop, Monitor, AlertTriangle, Edit3, Trash2, CheckCircle2, ShieldAlert } from "lucide-react";
-import { DEMO_DEVICES, toDhakaTimeString } from "@/lib/analyticsService";
+import { DEMO_DEVICES, fetchDevices, toDhakaTimeString } from "@/lib/analyticsService";
 import { Device } from "@/types";
 
 export default function DeviceManagementPage() {
@@ -10,6 +10,12 @@ export default function DeviceManagementPage() {
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
   const [newName, setNewName] = useState("");
   const [revokingId, setRevokingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchDevices().then((res) => {
+      setDevices(res);
+    });
+  }, []);
 
   const handleSaveRename = () => {
     if (!editingDevice || !newName.trim()) return;
