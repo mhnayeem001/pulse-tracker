@@ -18,7 +18,7 @@ const NAV_ITEMS = [
   { name: "Overview", href: "/", icon: LayoutDashboard },
   { name: "Device Analytics", href: "/devices", icon: Laptop },
   { name: "Activity Analytics", href: "/analytics", icon: BarChart3 },
-  { name: "Activity Heatmap", href: "/heatmap", icon: Flame },
+  { name: "Keyboard & Heatmaps", href: "/heatmap", icon: Flame },
   { name: "Device Comparison", href: "/comparison", icon: ArrowLeftRight },
   { name: "Reports & Exports", href: "/reports", icon: FileSpreadsheet },
   { name: "Device Management", href: "/management", icon: Cpu },
