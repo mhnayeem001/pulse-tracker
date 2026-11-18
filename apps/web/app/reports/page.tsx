@@ -1,15 +1,45 @@
 "use client";
 
-import { useState } from "react";
-import { Download, FileSpreadsheet, Calendar, Laptop } from "lucide-react";
-import { DEMO_DEVICES, formatDuration, generateDailyTrends } from "@/lib/analyticsService";
+import { useState, useEffect } from "react";
+import { Download, FileSpreadsheet, Calendar, Laptop, RefreshCw } from "lucide-react";
+import {
+  fetchDevices,
+  fetchLiveSummaries,
+  generateDailyFromSummaries,
+  formatDuration,
+  DEMO_DEVICES,
+} from "@/lib/analyticsService";
+import { ActivitySummary, Device, DailyStat } from "@/types";
 
 export default function ReportsPage() {
-  const [reportType, setReportType] = useState<"daily" | "weekly" | "monthly">("weekly");
+  const [reportType, setReportType] = useState<"daily" | "weekly" | "monthly">("daily");
   const [selectedDevice, setSelectedDevice] = useState<string>("all");
+  const [devices, setDevices] = useState<Device[]>(DEMO_DEVICES);
+  const [summaries, setSummaries] = useState<ActivitySummary[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const daysCount = reportType === "daily" ? 1 : reportType === "weekly" ? 7 : 30;
-  const rows = generateDailyTrends(daysCount);
+  const loadData = async (refresh = false) => {
+    if (refresh) setIsRefreshing(true);
+    try {
+      const devList = await fetchDevices();
+      setDevices(devList);
+
+      const range = reportType === "daily" ? "today" : reportType === "weekly" ? "7d" : "30d";
+      const data = await fetchLiveSummaries(range, selectedDevice);
+      setSummaries(data);
+    } catch (err) {
+      console.warn("Reports load error:", err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [reportType, selectedDevice]);
+
+  const maxDays = reportType === "daily" ? 1 : reportType === "weekly" ? 7 : 30;
+  const rows: DailyStat[] = generateDailyFromSummaries(summaries, devices, maxDays);
 
   // Generate downloadable CSV
   const handleExportCsv = () => {
@@ -62,130 +92,119 @@ export default function ReportsPage() {
     document.body.removeChild(link);
   };
 
-  // Generate downloadable JSON
-  const handleExportJson = () => {
-    const exportData = {
-      project: "Project PULSE",
-      exportedAt: new Date().toISOString(),
-      timezone: "Asia/Dhaka",
-      reportType,
-      selectedDevice,
-      records: rows,
-    };
-    const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(exportData, null, 2))}`;
-    const link = document.createElement("a");
-    link.setAttribute("href", jsonString);
-    link.setAttribute("download", `project-pulse-report-${reportType}-${new Date().toISOString().split("T")[0]}.json`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   return (
     <div className="space-y-8">
-      {/* Title */}
-      <div>
-        <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-white flex items-center gap-3">
-          <FileSpreadsheet className="w-7 h-7 text-emerald-400" />
-          Reports & Data Exports
-        </h1>
-        <p className="text-sm text-slate-400 mt-1">
-          Export full high-precision activity summaries in Excel-compatible CSV and JSON formats
-        </p>
+      {/* Title & Toolbar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-white flex items-center gap-3">
+              <FileSpreadsheet className="w-7 h-7 text-emerald-400" />
+              Reports &amp; Data Exports
+            </h1>
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+              Live Data
+            </span>
+          </div>
+          <p className="text-sm text-slate-400 mt-1">
+            Generate and export actual aggregate activity summaries for Personal Laptop and Office PC
+          </p>
+        </div>
+
+        {/* Export Button */}
+        <button
+          onClick={handleExportCsv}
+          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg shadow-sm transition-all"
+        >
+          <Download className="w-4 h-4" />
+          <span>Export Excel / CSV</span>
+        </button>
       </div>
 
-      {/* Configuration & Export Toolbar */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="flex flex-wrap items-center gap-4">
-          {/* Preset Buttons */}
+      {/* Filter Ribbon */}
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
           <div className="flex bg-slate-950 border border-slate-800 p-1 rounded-lg">
             {(["daily", "weekly", "monthly"] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setReportType(t)}
-                className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-all ${
-                  reportType === t ? "bg-sky-500 text-white shadow" : "text-slate-400 hover:text-slate-200"
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                  reportType === t
+                    ? "bg-sky-500 text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200"
                 }`}
               >
-                {t === "daily" ? "Today" : t === "weekly" ? "Last 7 Days" : "Last 30 Days"}
+                {t === "daily" ? "Daily (Today)" : t === "weekly" ? "Weekly (7d)" : "Monthly (30d)"}
               </button>
             ))}
           </div>
 
-          {/* Device Filter */}
-          <div className="flex items-center gap-2 text-xs">
-            <span className="text-slate-400 flex items-center gap-1.5">
-              <Laptop className="w-3.5 h-3.5" />
-              Device:
-            </span>
-            <select
-              value={selectedDevice}
-              onChange={(e) => setSelectedDevice(e.target.value)}
-              className="bg-slate-950 border border-slate-800 text-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-sky-500 font-medium"
-            >
-              <option value="all">All Registered Devices</option>
-              <option value={DEMO_DEVICES[0].id}>Personal Laptop</option>
-              <option value={DEMO_DEVICES[1].id}>Office PC</option>
-            </select>
-          </div>
+          <select
+            value={selectedDevice}
+            onChange={(e) => setSelectedDevice(e.target.value)}
+            className="bg-slate-950 border border-slate-800 text-xs text-slate-200 rounded-lg px-3 py-2 font-medium focus:outline-none focus:border-sky-500"
+          >
+            <option value="all">All Devices (Combined)</option>
+            {devices.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.device_name}
+              </option>
+            ))}
+          </select>
         </div>
 
-        {/* Action Export Buttons */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleExportCsv}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-sm transition-all"
-          >
-            <Download className="w-4 h-4" />
-            Download CSV (Excel)
-          </button>
-          <button
-            onClick={handleExportJson}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 transition-all"
-          >
-            Download JSON
-          </button>
-        </div>
+        <button
+          onClick={() => loadData(true)}
+          disabled={isRefreshing}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 bg-slate-950 border border-slate-800 rounded-lg hover:text-white transition-all disabled:opacity-50"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin text-sky-400" : ""}`} />
+          <span>{isRefreshing ? "Syncing..." : "Refresh"}</span>
+        </button>
       </div>
 
-      {/* Report Preview Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
+      {/* Reports Table */}
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm overflow-x-auto">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-white flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-sky-400" />
-            Report Data Preview ({rows.length} records)
-          </h2>
-          <span className="text-xs text-slate-400 font-mono">Timezone: Asia/Dhaka (UTC+6)</span>
+          <h2 className="text-base font-semibold text-white">Aggregated Activity Logs</h2>
+          <span className="text-xs text-slate-400 font-mono">
+            {rows.length} Active Day(s) Recorded
+          </span>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="text-slate-400 border-b border-slate-800 font-mono">
-              <tr>
-                <th className="pb-3 font-semibold">Date</th>
-                <th className="pb-3 font-semibold text-right">Total Clicks</th>
-                <th className="pb-3 font-semibold text-right">Laptop Clicks</th>
-                <th className="pb-3 font-semibold text-right">Office Clicks</th>
-                <th className="pb-3 font-semibold text-right">Total Keyboard</th>
-                <th className="pb-3 font-semibold text-right">Active Duration</th>
-                <th className="pb-3 font-semibold text-right">Idle Duration</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60 font-mono text-slate-300">
-              {rows.map((row) => (
+        <table className="w-full text-left text-xs min-w-[700px]">
+          <thead className="text-slate-400 border-b border-slate-800 font-mono">
+            <tr>
+              <th className="pb-3 font-semibold">Date</th>
+              <th className="pb-3 font-semibold">Total Clicks</th>
+              <th className="pb-3 font-semibold">Total Key Presses</th>
+              <th className="pb-3 font-semibold">Active Duration</th>
+              <th className="pb-3 font-semibold">Idle Duration</th>
+              <th className="pb-3 font-semibold">Active Ratio</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-800/60 text-slate-300">
+            {rows.map((row) => {
+              const totalSec = row.activeSeconds + row.idleSeconds;
+              const ratio = totalSec > 0 ? ((row.activeSeconds / totalSec) * 100).toFixed(0) : "0";
+              return (
                 <tr key={row.date} className="hover:bg-slate-800/30 transition-colors">
-                  <td className="py-3 font-sans font-medium text-white">{row.formattedDate}</td>
-                  <td className="py-3 text-right text-sky-400 font-bold">{row.totalClicks.toLocaleString()}</td>
-                  <td className="py-3 text-right text-slate-400">{row.laptopClicks.toLocaleString()}</td>
-                  <td className="py-3 text-right text-slate-400">{row.officeClicks.toLocaleString()}</td>
-                  <td className="py-3 text-right text-purple-400 font-bold">{row.totalKeyboard.toLocaleString()}</td>
-                  <td className="py-3 text-right text-emerald-400">{formatDuration(row.activeSeconds)}</td>
-                  <td className="py-3 text-right text-amber-400">{formatDuration(row.idleSeconds)}</td>
+                  <td className="py-3 font-medium text-white">{row.formattedDate}</td>
+                  <td className="py-3 font-mono text-sky-400 font-semibold">{row.totalClicks.toLocaleString()}</td>
+                  <td className="py-3 font-mono text-purple-400 font-semibold">{row.totalKeyboard.toLocaleString()}</td>
+                  <td className="py-3 font-mono text-emerald-400">{formatDuration(row.activeSeconds)}</td>
+                  <td className="py-3 font-mono text-slate-400">{formatDuration(row.idleSeconds)}</td>
+                  <td className="py-3">
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      {ratio}%
+                    </span>
+                  </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );

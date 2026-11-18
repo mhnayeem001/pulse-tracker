@@ -7,7 +7,7 @@ export const DEFAULT_USER = {
   role: "Personal & Office PC",
 };
 
-// Default fallback devices while loading or offline
+// Default fallback devices while loading
 export const DEMO_DEVICES: Device[] = [
   {
     id: "personal-laptop",
@@ -26,7 +26,7 @@ export const DEMO_DEVICES: Device[] = [
   {
     id: "office-pc",
     user_id: "38326e10-7371-42d8-aed7-562f57c84aa6",
-    device_name: "Office PC",
+    device_name: "Office pc",
     device_type: "desktop",
     hostname: "OFFICE-PC",
     os_version: "Windows 11",
@@ -84,7 +84,7 @@ export async function fetchDevices(): Promise<Device[]> {
 /**
  * Fetches live activity summaries from Supabase for a given time range and device
  */
-export async function fetchLiveSummaries(range: TimeRange, deviceId?: string): Promise<ActivitySummary[]> {
+export async function fetchLiveSummaries(range: TimeRange = "today", deviceId?: string): Promise<ActivitySummary[]> {
   if (!isSupabaseConfigured || !supabase) return [];
 
   try {
@@ -126,6 +126,9 @@ export async function fetchLiveSummaries(range: TimeRange, deviceId?: string): P
   return [];
 }
 
+/**
+ * Calculate totals and high-level metrics from real summaries
+ */
 export function calculateMetrics(summaries: ActivitySummary[]): DashboardMetrics {
   let leftClicks = 0;
   let rightClicks = 0;
@@ -170,6 +173,9 @@ export function calculateMetrics(summaries: ActivitySummary[]): DashboardMetrics
   };
 }
 
+/**
+ * 24-hour distribution from real summaries (grouped by Asia/Dhaka hour)
+ */
 export function generateHourlyFromSummaries(summaries: ActivitySummary[]): HourlyStat[] {
   const map = new Map<number, { clicks: number; keyboard: number; activeSec: number }>();
   for (let i = 0; i < 24; i++) {
@@ -207,17 +213,36 @@ export function generateHourlyDistribution(range: TimeRange, deviceId?: string):
   return generateHourlyFromSummaries([]);
 }
 
-export function generateDailyFromSummaries(summaries: ActivitySummary[], devices: Device[], days: number = 7): DailyStat[] {
-  const result: DailyStat[] = [];
+/**
+ * Dynamic Daily Trends:
+ * Only displays dates starting from the user's earliest activity or today.
+ * If user started today, only shows Today without fabricated past days!
+ */
+export function generateDailyFromSummaries(summaries: ActivitySummary[], devices: Device[], maxDays: number = 7): DailyStat[] {
   const now = new Date();
+
+  // Find unique days present in summaries, plus today
+  const activeDateSet = new Set<string>();
+  activeDateSet.add(now.toISOString().split("T")[0]);
+
+  for (const s of summaries) {
+    if (s.bucket_start) {
+      activeDateSet.add(new Date(s.bucket_start).toISOString().split("T")[0]);
+    }
+  }
+
+  // Sort dates ascending
+  const sortedDates = Array.from(activeDateSet).sort();
+  // Take at most maxDays
+  const datesToShow = sortedDates.slice(-maxDays);
 
   const laptopDevice = devices.find(d => d.device_name.toLowerCase().includes("laptop"));
   const officeDevice = devices.find(d => d.device_name.toLowerCase().includes("office"));
 
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().split("T")[0];
+  const result: DailyStat[] = [];
+
+  for (const dateStr of datesToShow) {
+    const d = new Date(dateStr + "T00:00:00Z");
 
     const daySummaries = summaries.filter(s => {
       const sDate = new Date(s.bucket_start).toISOString().split("T")[0];
@@ -262,6 +287,7 @@ export function generateDailyFromSummaries(summaries: ActivitySummary[], devices
       idleSeconds: Math.round(idleSec),
     });
   }
+
   return result;
 }
 
@@ -269,7 +295,12 @@ export function generateDailyTrends(days: number = 7): DailyStat[] {
   return generateDailyFromSummaries([], DEMO_DEVICES, days);
 }
 
-export function generateHeatmapGrid(metric: "clicks" | "keyboard" | "actions" | "active", summaries: ActivitySummary[] = []): HeatmapCell[] {
+/**
+ * Real Heatmap Grid:
+ * 7 Days of week x 24 Hours.
+ * Populated dynamically with actual activity from summaries!
+ */
+export function generateHeatmapGrid(metric: "clicks" | "keyboard" | "actions" | "active" = "actions", summaries: ActivitySummary[] = []): HeatmapCell[] {
   const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const matrix: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
 
@@ -303,6 +334,55 @@ export function generateHeatmapGrid(metric: "clicks" | "keyboard" | "actions" | 
     }
   }
   return cells;
+}
+
+/**
+ * Real Device Breakdown between Laptop and Office PC
+ */
+export function getDeviceContributions(summaries: ActivitySummary[], devices: Device[]) {
+  const laptopDevice = devices.find(d => d.device_name.toLowerCase().includes("laptop"));
+  const officeDevice = devices.find(d => d.device_name.toLowerCase().includes("office"));
+
+  let laptopClicks = 0;
+  let officeClicks = 0;
+  let laptopKeys = 0;
+  let officeKeys = 0;
+  let laptopActive = 0;
+  let officeActive = 0;
+
+  for (const s of summaries) {
+    const clicks = (s.left_clicks || 0) + (s.right_clicks || 0) + (s.middle_clicks || 0) + (s.x1_clicks || 0) + (s.x2_clicks || 0);
+    const keys = s.keyboard_presses || 0;
+    const active = s.active_seconds || 0;
+
+    if (laptopDevice && s.device_id === laptopDevice.id) {
+      laptopClicks += clicks;
+      laptopKeys += keys;
+      laptopActive += active;
+    } else if (officeDevice && s.device_id === officeDevice.id) {
+      officeClicks += clicks;
+      officeKeys += keys;
+      officeActive += active;
+    }
+  }
+
+  return {
+    laptop: {
+      device: laptopDevice,
+      clicks: laptopClicks,
+      keys: laptopKeys,
+      activeSeconds: laptopActive,
+    },
+    office: {
+      device: officeDevice,
+      clicks: officeClicks,
+      keys: officeKeys,
+      activeSeconds: officeActive,
+    },
+    totalClicks: laptopClicks + officeClicks,
+    totalKeys: laptopKeys + officeKeys,
+    totalActiveSeconds: laptopActive + officeActive,
+  };
 }
 
 export function formatDuration(totalSeconds: number): string {

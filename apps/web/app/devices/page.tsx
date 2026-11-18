@@ -10,6 +10,7 @@ import {
   Coffee,
   Scroll,
   Navigation,
+  RefreshCw,
   CheckCircle2,
 } from "lucide-react";
 import { MetricCard } from "@/components/dashboard/MetricCard";
@@ -27,28 +28,43 @@ import { Device, ActivitySummary } from "@/types";
 
 export default function DeviceAnalyticsPage() {
   const [devices, setDevices] = useState<Device[]>(DEMO_DEVICES);
-  const [selectedId, setSelectedId] = useState<string>(DEMO_DEVICES[0].id);
+  const [selectedId, setSelectedId] = useState<string>("");
   const [summaries, setSummaries] = useState<ActivitySummary[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const loadDevices = async () => {
+    const list = await fetchDevices();
+    setDevices(list);
+    if (list.length > 0) {
+      setSelectedId((prev) => (list.find((d) => d.id === prev) ? prev : list[0].id));
+    }
+  };
+
+  const loadSummaries = async (refresh = false) => {
+    if (refresh) setIsRefreshing(true);
+    if (selectedId) {
+      const res = await fetchLiveSummaries("today", selectedId);
+      setSummaries(res);
+    }
+    if (refresh) setIsRefreshing(false);
+  };
 
   useEffect(() => {
-    fetchDevices().then((list) => {
-      setDevices(list);
-      if (list.length > 0 && !list.find(d => d.id === selectedId)) {
-        setSelectedId(list[0].id);
-      }
-    });
+    loadDevices();
   }, []);
 
   useEffect(() => {
     if (selectedId) {
-      fetchLiveSummaries("today", selectedId).then((res) => {
-        setSummaries(res);
-      });
+      loadSummaries();
+      const interval = setInterval(() => loadSummaries(), 30000);
+      return () => clearInterval(interval);
     }
   }, [selectedId]);
 
   const currentDevice = devices.find((d) => d.id === selectedId) || devices[0];
-  const isLaptop = currentDevice?.device_type === "laptop" || currentDevice?.device_name?.toLowerCase().includes("laptop");
+  const isLaptop =
+    currentDevice?.device_type === "laptop" ||
+    currentDevice?.device_name?.toLowerCase().includes("laptop");
 
   const metrics = calculateMetrics(summaries);
   const hourlyData = generateHourlyFromSummaries(summaries);
@@ -58,30 +74,50 @@ export default function DeviceAnalyticsPage() {
       {/* Header & Device Switcher */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-white">
-            Device Analytics
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-white">
+              Device Analytics
+            </h1>
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+              Live Cloud Telemetry
+            </span>
+          </div>
           <p className="text-sm text-slate-400 mt-1">
             Deep performance and interaction metrics for each registered workstation
           </p>
         </div>
 
-        {/* Switch Device Tabs */}
-        <div className="flex bg-slate-900 border border-slate-800 p-1 rounded-xl">
-          {devices.map((d) => (
-            <button
-              key={d.id}
-              onClick={() => setSelectedId(d.id)}
-              className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition-all ${
-                selectedId === d.id
-                  ? "bg-sky-500 text-white shadow-sm"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              {d.device_type === "laptop" ? <Laptop className="w-3.5 h-3.5" /> : <Monitor className="w-3.5 h-3.5" />}
-              {d.device_name}
-            </button>
-          ))}
+        {/* Switch Device Tabs & Refresh */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            onClick={() => loadSummaries(true)}
+            disabled={isRefreshing}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-300 bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-800 hover:text-white transition-all disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin text-sky-400" : ""}`} />
+            <span>{isRefreshing ? "Syncing..." : "Refresh"}</span>
+          </button>
+
+          <div className="flex bg-slate-900 border border-slate-800 p-1 rounded-xl">
+            {devices.map((d) => (
+              <button
+                key={d.id}
+                onClick={() => setSelectedId(d.id)}
+                className={`flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-lg transition-all ${
+                  selectedId === d.id
+                    ? "bg-sky-500 text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                {d.device_type === "laptop" || d.device_name?.toLowerCase().includes("laptop") ? (
+                  <Laptop className="w-3.5 h-3.5" />
+                ) : (
+                  <Monitor className="w-3.5 h-3.5" />
+                )}
+                <span>{d.device_name}</span>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -93,17 +129,19 @@ export default function DeviceAnalyticsPage() {
           </div>
           <div>
             <div className="flex items-center gap-2.5">
-              <h2 className="text-lg font-bold text-white">{currentDevice.device_name}</h2>
-              <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
-                currentDevice.is_active
-                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                  : "bg-rose-500/10 text-rose-400 border-rose-500/20"
-              }`}>
-                {currentDevice.is_active ? "● Online / Active" : "Inactive"}
+              <h2 className="text-lg font-bold text-white">{currentDevice?.device_name}</h2>
+              <span
+                className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
+                  currentDevice?.is_active
+                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                    : "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                }`}
+              >
+                {currentDevice?.is_active ? "● Online / Active" : "Inactive"}
               </span>
             </div>
             <p className="text-xs text-slate-400 font-mono mt-0.5">
-              Host: {currentDevice.hostname} • OS: {currentDevice.os_version} • Agent v{currentDevice.agent_version}
+              Host: {currentDevice?.hostname || "Workstation"} • OS: {currentDevice?.os_version || "Windows 11"} • Agent v{currentDevice?.agent_version || "1.0.0"}
             </p>
           </div>
         </div>
@@ -112,13 +150,13 @@ export default function DeviceAnalyticsPage() {
           <div>
             <div className="text-[11px] text-slate-500 font-medium">Last Sync</div>
             <div className="text-slate-200 font-mono font-medium mt-0.5">
-              {currentDevice.last_sync_at ? toDhakaTimeString(currentDevice.last_sync_at) : "Never"}
+              {currentDevice?.last_sync_at ? toDhakaTimeString(currentDevice.last_sync_at) : "Recently"}
             </div>
           </div>
           <div>
             <div className="text-[11px] text-slate-500 font-medium">Registered At</div>
             <div className="text-slate-200 font-mono font-medium mt-0.5">
-              {toDhakaTimeString(currentDevice.registered_at)}
+              {currentDevice?.registered_at ? toDhakaTimeString(currentDevice.registered_at) : "Today"}
             </div>
           </div>
         </div>
@@ -164,9 +202,7 @@ export default function DeviceAnalyticsPage() {
         <p className="text-xs text-slate-400 mb-6">
           Click and keyboard actions distributed by hour (Asia/Dhaka time)
         </p>
-        <HourlyBarChart
-          data={hourlyData}
-        />
+        <HourlyBarChart data={hourlyData} />
       </div>
     </div>
   );
