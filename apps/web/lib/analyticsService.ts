@@ -153,6 +153,28 @@ export async function fetchLiveSummaries(range: TimeRange = "today", deviceId?: 
 }
 
 /**
+ * Normalizes active vs idle time per 60-second summary:
+ * - If 0 clicks, 0 keys, and 0 mouse moves: user was not using computer -> 100% IDLE (0s active, 60s idle).
+ * - If user interacted: ensures active + idle equals 60s realistically.
+ */
+export function getCleanSummaryActivity(s: ActivitySummary): { activeSeconds: number; idleSeconds: number } {
+  const clicks = (s.left_clicks || 0) + (s.right_clicks || 0) + (s.middle_clicks || 0) + (s.x1_clicks || 0) + (s.x2_clicks || 0);
+  const keys = s.keyboard_presses || 0;
+  const moves = s.mouse_movement_events || 0;
+  const inputs = clicks + keys + moves;
+
+  if (inputs === 0) {
+    return { activeSeconds: 0, idleSeconds: 60 };
+  }
+
+  const rawActive = Math.min(60, Math.max(0, s.active_seconds || 0));
+  const activeSeconds = rawActive > 0 ? rawActive : Math.min(60, Math.max(10, Math.round(clicks * 2 + keys * 0.5)));
+  const idleSeconds = Math.max(0, 60 - activeSeconds);
+
+  return { activeSeconds, idleSeconds };
+}
+
+/**
  * Calculate totals and high-level metrics from real summaries
  */
 export function calculateMetrics(summaries: ActivitySummary[]): DashboardMetrics {
@@ -172,8 +194,11 @@ export function calculateMetrics(summaries: ActivitySummary[]): DashboardMetrics
     middleClicks += s.middle_clicks || 0;
     xClicks += (s.x1_clicks || 0) + (s.x2_clicks || 0);
     keyboard += s.keyboard_presses || 0;
-    activeSec += s.active_seconds || 0;
-    idleSec += s.idle_seconds || 0;
+
+    const clean = getCleanSummaryActivity(s);
+    activeSec += clean.activeSeconds;
+    idleSec += clean.idleSeconds;
+
     vScroll += Math.abs(s.vertical_scroll || 0);
     distance += s.mouse_distance || 0;
   }
@@ -218,7 +243,8 @@ export function generateHourlyFromSummaries(summaries: ActivitySummary[]): Hourl
     const existing = map.get(dhakaHour) || { clicks: 0, keyboard: 0, activeSec: 0 };
     existing.clicks += (s.left_clicks || 0) + (s.right_clicks || 0) + (s.middle_clicks || 0) + (s.x1_clicks || 0) + (s.x2_clicks || 0);
     existing.keyboard += s.keyboard_presses || 0;
-    existing.activeSec += s.active_seconds || 0;
+    const clean = getCleanSummaryActivity(s);
+    existing.activeSec += clean.activeSeconds;
     map.set(dhakaHour, existing);
   }
 
@@ -274,8 +300,9 @@ export function generateDailyFromSummaries(summaries: ActivitySummary[], devices
     for (const s of daySummaries) {
       const clicks = (s.left_clicks || 0) + (s.right_clicks || 0) + (s.middle_clicks || 0) + (s.x1_clicks || 0) + (s.x2_clicks || 0);
       const keys = s.keyboard_presses || 0;
-      activeSec += s.active_seconds || 0;
-      idleSec += s.idle_seconds || 0;
+      const clean = getCleanSummaryActivity(s);
+      activeSec += clean.activeSeconds;
+      idleSec += clean.idleSeconds;
 
       if (laptopDevice && s.device_id === laptopDevice.id) {
         laptopClicks += clicks;
@@ -368,16 +395,16 @@ export function getDeviceContributions(summaries: ActivitySummary[], devices: De
   for (const s of summaries) {
     const clicks = (s.left_clicks || 0) + (s.right_clicks || 0) + (s.middle_clicks || 0) + (s.x1_clicks || 0) + (s.x2_clicks || 0);
     const keys = s.keyboard_presses || 0;
-    const active = s.active_seconds || 0;
+    const { activeSeconds } = getCleanSummaryActivity(s);
 
     if (laptopDevice && s.device_id === laptopDevice.id) {
       laptopClicks += clicks;
       laptopKeys += keys;
-      laptopActive += active;
+      laptopActive += activeSeconds;
     } else if (officeDevice && s.device_id === officeDevice.id) {
       officeClicks += clicks;
       officeKeys += keys;
-      officeActive += active;
+      officeActive += activeSeconds;
     }
   }
 

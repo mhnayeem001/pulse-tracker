@@ -22,6 +22,7 @@ import {
   calculateMetrics,
   formatDuration,
   aggregateKeyCounts,
+  getCleanSummaryActivity,
   DEMO_DEVICES,
 } from "@/lib/analyticsService";
 import { ActivitySummary, Device, TimeRange } from "@/types";
@@ -88,7 +89,8 @@ export default function ActivityHeatmapPage() {
         (s.x1_clicks || 0) +
         (s.x2_clicks || 0);
       keys += s.keyboard_presses || 0;
-      activeSec += s.active_seconds || 0;
+      const clean = getCleanSummaryActivity(s);
+      activeSec += clean.activeSeconds;
     }
 
     const actions = clicks + keys;
@@ -199,7 +201,8 @@ export default function ActivityHeatmapPage() {
   let longestStreakMinutes = 0;
   let currentStreak = 0;
   for (const s of summaries) {
-    if ((s.active_seconds || 0) >= 20) {
+    const clean = getCleanSummaryActivity(s);
+    if (clean.activeSeconds >= 20) {
       currentStreak++;
       if (currentStreak > longestStreakMinutes) longestStreakMinutes = currentStreak;
     } else {

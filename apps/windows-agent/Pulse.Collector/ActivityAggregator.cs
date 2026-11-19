@@ -28,6 +28,7 @@ public class ActivityAggregator : IActivityAggregator
     private double _mouseDistance;
     private int _activeSeconds;
     private int _idleSeconds;
+    private DateTime _lastInputUtc = DateTime.UtcNow;
     private readonly Dictionary<string, int> _keyCounts = new();
 
     public event Action<ActivitySummary>? OnSummaryReady;
@@ -72,6 +73,8 @@ public class ActivityAggregator : IActivityAggregator
     {
         lock (_lock)
         {
+            _lastInputUtc = DateTime.UtcNow;
+
             if (e.LeftButtonDown) _leftClicks++;
             if (e.RightButtonDown) _rightClicks++;
             if (e.MiddleButtonDown) _middleClicks++;
@@ -93,6 +96,8 @@ public class ActivityAggregator : IActivityAggregator
     {
         lock (_lock)
         {
+            _lastInputUtc = DateTime.UtcNow;
+
             if (e.IsKeyDown)
             {
                 _keyboardPresses++;
@@ -114,14 +119,16 @@ public class ActivityAggregator : IActivityAggregator
             {
                 var now = DateTime.UtcNow;
 
-                // Accumulate second into active or idle
-                if (_isIdle)
+                // Active second is counted if user interacted within the last 15 seconds (micro-pause grace)
+                // and system is not in locked/sleep idle state
+                double secondsSinceInput = (now - _lastInputUtc).TotalSeconds;
+                if (secondsSinceInput <= 15.0 && !_isIdle)
                 {
-                    _idleSeconds++;
+                    _activeSeconds++;
                 }
                 else
                 {
-                    _activeSeconds++;
+                    _idleSeconds++;
                 }
 
                 // If bucket has reached or exceeded 60 seconds (or current minute boundary passed)
@@ -194,6 +201,25 @@ public class ActivityAggregator : IActivityAggregator
             bucketEnd = now;
         }
 
+        int totalInputs = _leftClicks + _rightClicks + _middleClicks + _x1Clicks + _x2Clicks + _keyboardPresses + _mouseMoveEvents;
+        int finalActive = Math.Min(60, Math.Max(0, _activeSeconds));
+        int finalIdle = Math.Min(60, Math.Max(0, _idleSeconds));
+
+        // Sanity Check: If literally zero input occurred during this entire minute,
+        // it cannot be active work; it is 100% idle.
+        if (totalInputs == 0)
+        {
+            finalActive = 0;
+            finalIdle = 60;
+        }
+        else
+        {
+            if (finalActive + finalIdle != 60)
+            {
+                finalIdle = Math.Max(0, 60 - finalActive);
+            }
+        }
+
         var summary = new ActivitySummary
         {
             Id = Guid.NewGuid().ToString(),
@@ -211,8 +237,8 @@ public class ActivityAggregator : IActivityAggregator
             HorizontalScroll = _horizontalScroll,
             MouseMovementEvents = _mouseMoveEvents,
             MouseDistance = _mouseDistance,
-            ActiveSeconds = Math.Min(60, _activeSeconds),
-            IdleSeconds = Math.Min(60, _idleSeconds),
+            ActiveSeconds = finalActive,
+            IdleSeconds = finalIdle,
             SessionId = _sessionId,
             KeyCounts = new Dictionary<string, int>(_keyCounts),
             CreatedAtUtc = now,
