@@ -31,6 +31,7 @@ import {
 export default function ActivityAnalyticsPage() {
   const [devices, setDevices] = useState<Device[]>(DEMO_DEVICES);
   const [summaries, setSummaries] = useState<ActivitySummary[]>([]);
+  const [trendSummaries, setTrendSummaries] = useState<ActivitySummary[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const loadData = async (refresh = false) => {
@@ -38,8 +39,12 @@ export default function ActivityAnalyticsPage() {
     try {
       const devList = await fetchDevices();
       setDevices(devList);
-      const data = await fetchLiveSummaries("today");
-      setSummaries(data);
+      const [todayData, trendData] = await Promise.all([
+        fetchLiveSummaries("today"),
+        fetchLiveSummaries("7d"),
+      ]);
+      setSummaries(todayData);
+      setTrendSummaries(trendData);
     } catch (err) {
       console.warn("ActivityAnalytics load error:", err);
     } finally {
@@ -54,7 +59,11 @@ export default function ActivityAnalyticsPage() {
   }, []);
 
   const metrics = calculateMetrics(summaries);
-  const dailyData: DailyStat[] = generateDailyFromSummaries(summaries, devices, 7);
+  const dailyData: DailyStat[] = generateDailyFromSummaries(
+    trendSummaries.length > 0 ? trendSummaries : summaries,
+    devices,
+    7
+  );
   const hourlyData: HourlyStat[] = generateHourlyFromSummaries(summaries);
 
   const totalClicks = metrics.totalClicks;

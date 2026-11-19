@@ -17,6 +17,7 @@ import { ActivitySummary, Device, DailyStat } from "@/types";
 export default function DeviceComparisonPage() {
   const [devices, setDevices] = useState<Device[]>(DEMO_DEVICES);
   const [summaries, setSummaries] = useState<ActivitySummary[]>([]);
+  const [trendSummaries, setTrendSummaries] = useState<ActivitySummary[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const loadData = async (refresh = false) => {
@@ -24,8 +25,12 @@ export default function DeviceComparisonPage() {
     try {
       const devList = await fetchDevices();
       setDevices(devList);
-      const data = await fetchLiveSummaries("today");
-      setSummaries(data);
+      const [todayData, trendData] = await Promise.all([
+        fetchLiveSummaries("today"),
+        fetchLiveSummaries("7d"),
+      ]);
+      setSummaries(todayData);
+      setTrendSummaries(trendData);
     } catch (err) {
       console.warn("Comparison load error:", err);
     } finally {
@@ -40,7 +45,11 @@ export default function DeviceComparisonPage() {
   }, []);
 
   const contributions = getDeviceContributions(summaries, devices);
-  const dailyData: DailyStat[] = generateDailyFromSummaries(summaries, devices, 7);
+  const dailyData: DailyStat[] = generateDailyFromSummaries(
+    trendSummaries.length > 0 ? trendSummaries : summaries,
+    devices,
+    7
+  );
 
   const laptop = contributions.laptop;
   const office = contributions.office;

@@ -57,6 +57,7 @@ internal static class Program
 
                     services.AddSingleton<ISyncService, SupabaseSyncService>();
                     services.AddSingleton<AuthService>();
+                    services.AddSingleton<AutoUpdateService>();
                     services.AddSingleton<MainForm>();
                 })
                 .Build();
@@ -74,6 +75,9 @@ internal static class Program
 
             var syncService = host.Services.GetRequiredService<ISyncService>();
             syncService.Start();
+
+            var updateService = host.Services.GetRequiredService<AutoUpdateService>();
+            updateService.StartBackgroundChecks(initialDelaySeconds: 15, intervalMinutes: 60);
 
             var mainForm = host.Services.GetRequiredService<MainForm>();
 

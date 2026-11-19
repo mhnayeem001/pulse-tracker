@@ -81,6 +81,28 @@ export async function fetchDevices(): Promise<Device[]> {
   return DEMO_DEVICES;
 }
 
+export function getDhakaMidnightDate(daysAgo: number = 0): Date {
+  const now = new Date();
+  const dhakaStr = now.toLocaleString("en-US", { timeZone: "Asia/Dhaka" });
+  const dhakaNow = new Date(dhakaStr);
+  const target = new Date(dhakaNow);
+  target.setDate(target.getDate() - daysAgo);
+  const year = target.getFullYear();
+  const month = String(target.getMonth() + 1).padStart(2, "0");
+  const day = String(target.getDate()).padStart(2, "0");
+  return new Date(`${year}-${month}-${day}T00:00:00+06:00`);
+}
+
+export function getDhakaDateString(date: Date | string = new Date()): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  return d.toLocaleDateString("en-CA", { timeZone: "Asia/Dhaka" });
+}
+
+export function getDhakaFormattedDate(date: Date | string = new Date()): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  return d.toLocaleDateString("en-US", { timeZone: "Asia/Dhaka", month: "short", day: "numeric" });
+}
+
 /**
  * Fetches live activity summaries from Supabase for a given time range and device
  */
@@ -90,20 +112,20 @@ export async function fetchLiveSummaries(range: TimeRange = "today", deviceId?: 
   try {
     await ensureAuthenticated();
 
-    const now = new Date();
-    let startDate = new Date();
+    let startDate: Date;
+    let endDate: Date | null = null;
 
     if (range === "today") {
-      startDate.setHours(0, 0, 0, 0);
+      startDate = getDhakaMidnightDate(0);
     } else if (range === "yesterday") {
-      startDate.setDate(startDate.getDate() - 1);
-      startDate.setHours(0, 0, 0, 0);
+      startDate = getDhakaMidnightDate(1);
+      endDate = getDhakaMidnightDate(0);
     } else if (range === "7d") {
-      startDate.setDate(startDate.getDate() - 7);
-      startDate.setHours(0, 0, 0, 0);
+      startDate = getDhakaMidnightDate(7);
     } else if (range === "30d") {
-      startDate.setDate(startDate.getDate() - 30);
-      startDate.setHours(0, 0, 0, 0);
+      startDate = getDhakaMidnightDate(30);
+    } else {
+      startDate = getDhakaMidnightDate(0);
     }
 
     let query = supabase
@@ -111,6 +133,10 @@ export async function fetchLiveSummaries(range: TimeRange = "today", deviceId?: 
       .select("*")
       .gte("bucket_start", startDate.toISOString())
       .order("bucket_start", { ascending: true });
+
+    if (endDate) {
+      query = query.lt("bucket_start", endDate.toISOString());
+    }
 
     if (deviceId && deviceId !== "all") {
       query = query.eq("device_id", deviceId);
@@ -221,17 +247,20 @@ export function generateHourlyDistribution(range: TimeRange, deviceId?: string):
 export function generateDailyFromSummaries(summaries: ActivitySummary[], devices: Device[], days: number = 7): DailyStat[] {
   const result: DailyStat[] = [];
   const now = new Date();
+  const dhakaStr = now.toLocaleString("en-US", { timeZone: "Asia/Dhaka" });
+  const dhakaNow = new Date(dhakaStr);
 
   const laptopDevice = devices.find(d => d.device_name.toLowerCase().includes("laptop"));
   const officeDevice = devices.find(d => d.device_name.toLowerCase().includes("office"));
 
   for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().split("T")[0];
+    const targetDate = new Date(dhakaNow);
+    targetDate.setDate(targetDate.getDate() - i);
+    const dateStr = targetDate.toLocaleDateString("en-CA", { timeZone: "Asia/Dhaka" });
+    const formattedDate = targetDate.toLocaleDateString("en-US", { timeZone: "Asia/Dhaka", month: "short", day: "numeric" });
 
     const daySummaries = summaries.filter(s => {
-      const sDate = new Date(s.bucket_start).toISOString().split("T")[0];
+      const sDate = new Date(s.bucket_start).toLocaleDateString("en-CA", { timeZone: "Asia/Dhaka" });
       return sDate === dateStr;
     });
 
@@ -262,7 +291,7 @@ export function generateDailyFromSummaries(summaries: ActivitySummary[], devices
 
     result.push({
       date: dateStr,
-      formattedDate: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      formattedDate,
       laptopClicks,
       officeClicks,
       totalClicks: laptopClicks + officeClicks,

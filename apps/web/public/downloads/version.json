@@ -1,0 +1,6 @@
+{
+  "version": "1.1.0",
+  "download_url": "https://pulse-tracker-theta.vercel.app/downloads/Pulse-Agent.zip",
+  "notes": "Real physical keyboard telemetry (VKey tracking) and automatic background updates.",
+  "mandatory": false
+}

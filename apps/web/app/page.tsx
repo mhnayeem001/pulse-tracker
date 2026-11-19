@@ -30,6 +30,7 @@ export default function OverviewPage() {
   const [selectedDevice, setSelectedDevice] = useState<string>("all");
   const [devices, setDevices] = useState<Device[]>(DEMO_DEVICES);
   const [summaries, setSummaries] = useState<ActivitySummary[]>([]);
+  const [trendSummaries, setTrendSummaries] = useState<ActivitySummary[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [lastRefreshed, setLastRefreshed] = useState<string>("");
@@ -40,8 +41,12 @@ export default function OverviewPage() {
       const devList = await fetchDevices();
       setDevices(devList);
 
-      const realSummaries = await fetchLiveSummaries(timeRange, selectedDevice);
+      const [realSummaries, trendList] = await Promise.all([
+        fetchLiveSummaries(timeRange, selectedDevice),
+        fetchLiveSummaries(timeRange === "30d" ? "30d" : "7d", selectedDevice),
+      ]);
       setSummaries(realSummaries);
+      setTrendSummaries(trendList);
       setLastRefreshed(new Date().toLocaleTimeString("en-US", { hour12: true }));
     } catch (err) {
       console.error("Error loading live dashboard data:", err);
@@ -61,7 +66,11 @@ export default function OverviewPage() {
   // Calculate live metrics
   const metrics = calculateMetrics(summaries);
   const hourlyData = generateHourlyFromSummaries(summaries);
-  const dailyData = generateDailyFromSummaries(summaries, devices, timeRange === "30d" ? 30 : 7);
+  const dailyData = generateDailyFromSummaries(
+    trendSummaries.length > 0 ? trendSummaries : summaries,
+    devices,
+    timeRange === "30d" ? 30 : 7
+  );
 
   return (
     <div className="space-y-8">

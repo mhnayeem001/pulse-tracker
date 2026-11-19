@@ -17,6 +17,7 @@ public partial class MainForm : Form
     private readonly IStorageService _storage;
     private readonly ISyncService _syncService;
     private readonly AuthService _authService;
+    private readonly AutoUpdateService _updateService;
 
     private readonly NotifyIcon _trayIcon;
     private readonly ContextMenuStrip _trayMenu;
@@ -33,7 +34,8 @@ public partial class MainForm : Form
         ActivityAggregator aggregator,
         IStorageService storage,
         ISyncService syncService,
-        AuthService authService)
+        AuthService authService,
+        AutoUpdateService updateService)
     {
         _collector = collector;
         _idleDetector = idleDetector;
@@ -41,6 +43,7 @@ public partial class MainForm : Form
         _storage = storage;
         _syncService = syncService;
         _authService = authService;
+        _updateService = updateService;
 
         InitializeComponent();
 
@@ -50,6 +53,7 @@ public partial class MainForm : Form
         _trayMenu.Items.Add(new ToolStripSeparator());
         _trayMenu.Items.Add("Pause Tracking", null, (s, e) => TogglePause());
         _trayMenu.Items.Add("Force Sync Now", null, async (s, e) => await _syncService.ForceSyncNowAsync());
+        _trayMenu.Items.Add("Check for Updates...", null, async (s, e) => await CheckForUpdatesManual());
         _trayMenu.Items.Add("Open Web Dashboard", null, (s, e) => OpenWebDashboard());
         _trayMenu.Items.Add(new ToolStripSeparator());
         _trayMenu.Items.Add("Exit Project PULSE", null, (s, e) => ExitApplication());
@@ -257,6 +261,36 @@ public partial class MainForm : Form
             e.Cancel = true;
             Hide();
             _trayIcon.ShowBalloonTip(1500, "Project PULSE", "Minimized to tray. Tracking continues in background.", ToolTipIcon.Info);
+        }
+    }
+
+    private async Task CheckForUpdatesManual()
+    {
+        try
+        {
+            _trayIcon.ShowBalloonTip(2000, "Project PULSE", "Checking for updates...", ToolTipIcon.Info);
+            var update = await _updateService.CheckForUpdateAsync();
+            if (update == null)
+            {
+                MessageBox.Show($"Project PULSE is already up to date! (v{AutoUpdateService.CurrentVersion})", "Check for Updates", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var result = MessageBox.Show(
+                $"A new version (v{update.Version}) is available!\n\nRelease Notes: {update.Notes}\n\nWould you like to update and restart now?",
+                "Update Available",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (result == DialogResult.Yes)
+            {
+                _trayIcon.ShowBalloonTip(3000, "Project PULSE", "Downloading and applying update...", ToolTipIcon.Info);
+                await _updateService.CheckAndApplyUpdateAsync(silent: false);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Failed to check for updates: {ex.Message}", "Update Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
 
