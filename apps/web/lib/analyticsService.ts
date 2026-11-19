@@ -128,24 +128,40 @@ export async function fetchLiveSummaries(range: TimeRange = "today", deviceId?: 
       startDate = getDhakaMidnightDate(0);
     }
 
-    let query = supabase
-      .from("activity_summaries")
-      .select("*")
-      .gte("bucket_start", startDate.toISOString())
-      .order("bucket_start", { ascending: true });
+    const allSummaries: ActivitySummary[] = [];
+    let from = 0;
+    const pageSize = 1000;
+    const maxRows = range === "30d" ? 50000 : 15000;
 
-    if (endDate) {
-      query = query.lt("bucket_start", endDate.toISOString());
+    while (from < maxRows) {
+      let query = supabase
+        .from("activity_summaries")
+        .select("*")
+        .gte("bucket_start", startDate.toISOString())
+        .order("bucket_start", { ascending: true })
+        .range(from, from + pageSize - 1);
+
+      if (endDate) {
+        query = query.lt("bucket_start", endDate.toISOString());
+      }
+
+      if (deviceId && deviceId !== "all") {
+        query = query.eq("device_id", deviceId);
+      }
+
+      const { data, error } = await query;
+      if (error || !data || data.length === 0) {
+        break;
+      }
+
+      allSummaries.push(...(data as ActivitySummary[]));
+      if (data.length < pageSize) {
+        break;
+      }
+      from += pageSize;
     }
 
-    if (deviceId && deviceId !== "all") {
-      query = query.eq("device_id", deviceId);
-    }
-
-    const { data, error } = await query;
-    if (!error && data) {
-      return data as ActivitySummary[];
-    }
+    return allSummaries;
   } catch (err) {
     console.warn("fetchLiveSummaries error:", err);
   }
