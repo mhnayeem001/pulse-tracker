@@ -27,6 +27,7 @@ public class ActivityAggregator : IActivityAggregator
     private int _mouseMoveEvents;
     private double _mouseDistance;
     private int _activeSeconds;
+    private int _waitSeconds;
     private int _idleSeconds;
     private DateTime _lastInputUtc = DateTime.UtcNow;
     private readonly Dictionary<string, int> _keyCounts = new();
@@ -119,12 +120,22 @@ public class ActivityAggregator : IActivityAggregator
             {
                 var now = DateTime.UtcNow;
 
-                // Active second is counted if user interacted within the last 15 seconds (micro-pause grace)
-                // and system is not in locked/sleep idle state
+                // 3-Tier Activity Accumulation:
+                // 1. Direct Active: user interacted within last 15s (micro-pause grace)
+                // 2. AI / Build Wait: 15s to 180s without input (reading output, waiting for prompt/build)
+                // 3. Away / True AFK: >180s without input or system locked/asleep
                 double secondsSinceInput = (now - _lastInputUtc).TotalSeconds;
-                if (secondsSinceInput <= 15.0 && !_isIdle)
+                if (_isIdle)
+                {
+                    _idleSeconds++;
+                }
+                else if (secondsSinceInput <= 15.0)
                 {
                     _activeSeconds++;
+                }
+                else if (secondsSinceInput <= 180.0)
+                {
+                    _waitSeconds++;
                 }
                 else
                 {
@@ -133,7 +144,7 @@ public class ActivityAggregator : IActivityAggregator
 
                 // If bucket has reached or exceeded 60 seconds (or current minute boundary passed)
                 var currentMinute = QuantizeToMinute(now);
-                if (currentMinute > _currentBucketStartUtc || (_activeSeconds + _idleSeconds) >= 60)
+                if (currentMinute > _currentBucketStartUtc || (_activeSeconds + _waitSeconds + _idleSeconds) >= 60)
                 {
                     summaryToEmit = CreateAndResetSummary(now);
                 }
@@ -185,6 +196,7 @@ public class ActivityAggregator : IActivityAggregator
                 MouseMovementEvents = _mouseMoveEvents,
                 MouseDistance = _mouseDistance,
                 ActiveSeconds = _activeSeconds,
+                WaitSeconds = _waitSeconds,
                 IdleSeconds = _idleSeconds,
                 SessionId = _sessionId,
                 KeyCounts = new Dictionary<string, int>(_keyCounts),
@@ -203,20 +215,27 @@ public class ActivityAggregator : IActivityAggregator
 
         int totalInputs = _leftClicks + _rightClicks + _middleClicks + _x1Clicks + _x2Clicks + _keyboardPresses + _mouseMoveEvents;
         int finalActive = Math.Min(60, Math.Max(0, _activeSeconds));
+        int finalWait = Math.Min(60, Math.Max(0, _waitSeconds));
         int finalIdle = Math.Min(60, Math.Max(0, _idleSeconds));
 
-        // Sanity Check: If literally zero input occurred during this entire minute,
-        // it cannot be active work; it is 100% idle.
-        if (totalInputs == 0)
+        // If literally zero input occurred and last input was more than 180s ago,
+        // it cannot be work; it is 100% idle away time.
+        if (totalInputs == 0 && (now - _lastInputUtc).TotalSeconds > 180.0)
         {
             finalActive = 0;
+            finalWait = 0;
             finalIdle = 60;
         }
         else
         {
-            if (finalActive + finalIdle != 60)
+            int sum = finalActive + finalWait + finalIdle;
+            if (sum != 60 && sum > 0)
             {
-                finalIdle = Math.Max(0, 60 - finalActive);
+                finalIdle = Math.Max(0, 60 - (finalActive + finalWait));
+            }
+            else if (sum == 0)
+            {
+                finalIdle = 60;
             }
         }
 
@@ -238,6 +257,7 @@ public class ActivityAggregator : IActivityAggregator
             MouseMovementEvents = _mouseMoveEvents,
             MouseDistance = _mouseDistance,
             ActiveSeconds = finalActive,
+            WaitSeconds = finalWait,
             IdleSeconds = finalIdle,
             SessionId = _sessionId,
             KeyCounts = new Dictionary<string, int>(_keyCounts),
@@ -258,6 +278,7 @@ public class ActivityAggregator : IActivityAggregator
         _mouseMoveEvents = 0;
         _mouseDistance = 0.0;
         _activeSeconds = 0;
+        _waitSeconds = 0;
         _idleSeconds = 0;
         _keyCounts.Clear();
 

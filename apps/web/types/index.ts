@@ -31,6 +31,7 @@ export interface ActivitySummary {
   mouse_distance: number;
   active_seconds: number;
   idle_seconds: number;
+  wait_seconds?: number;
   session_id: string;
   created_at: string;
   key_counts?: Record<string, number>;
@@ -46,6 +47,9 @@ export interface DashboardMetrics {
   totalActions: number;
   activeSeconds: number;
   idleSeconds: number;
+  waitSeconds: number;
+  productiveSeconds: number;
+  productivePercentage: number;
   verticalScroll: number;
   mouseDistance: number;
   activePercentage: number;
@@ -69,6 +73,8 @@ export interface DailyStat {
   totalKeyboard: number;
   activeSeconds: number;
   idleSeconds: number;
+  waitSeconds?: number;
+  productiveSeconds?: number;
 }
 
 export interface HeatmapCell {

@@ -82,6 +82,7 @@ public class SqliteStorageService : IStorageService
                     mouse_movement_events INTEGER NOT NULL DEFAULT 0,
                     mouse_distance REAL NOT NULL DEFAULT 0.0,
                     active_seconds INTEGER NOT NULL DEFAULT 0,
+                    wait_seconds INTEGER NOT NULL DEFAULT 0,
                     idle_seconds INTEGER NOT NULL DEFAULT 0,
                     session_id TEXT NOT NULL,
                     is_synced INTEGER NOT NULL DEFAULT 0,
@@ -130,6 +131,17 @@ public class SqliteStorageService : IStorageService
                 // Column already exists
             }
 
+            try
+            {
+                using var alterWaitCmd = connection.CreateCommand();
+                alterWaitCmd.CommandText = "ALTER TABLE activity_summaries ADD COLUMN wait_seconds INTEGER DEFAULT 0;";
+                await alterWaitCmd.ExecuteNonQueryAsync();
+            }
+            catch
+            {
+                // Column already exists
+            }
+
             _logger?.LogInformation("Local SQLite database initialized successfully at {Connection}", _connectionString);
         }
         catch (Exception ex)
@@ -157,13 +169,13 @@ public class SqliteStorageService : IStorageService
                     id, device_id, user_id, bucket_start, bucket_end,
                     left_clicks, right_clicks, middle_clicks, x1_clicks, x2_clicks,
                     keyboard_presses, vertical_scroll, horizontal_scroll,
-                    mouse_movement_events, mouse_distance, active_seconds, idle_seconds,
+                    mouse_movement_events, mouse_distance, active_seconds, wait_seconds, idle_seconds,
                     session_id, is_synced, created_at, key_counts
                 ) VALUES (
                     $id, $device_id, $user_id, $bucket_start, $bucket_end,
                     $left_clicks, $right_clicks, $middle_clicks, $x1_clicks, $x2_clicks,
                     $keyboard_presses, $vertical_scroll, $horizontal_scroll,
-                    $mouse_movement_events, $mouse_distance, $active_seconds, $idle_seconds,
+                    $mouse_movement_events, $mouse_distance, $active_seconds, $wait_seconds, $idle_seconds,
                     $session_id, $is_synced, $created_at, $key_counts
                 )
                 ON CONFLICT(device_id, bucket_start) DO UPDATE SET
@@ -178,6 +190,7 @@ public class SqliteStorageService : IStorageService
                     mouse_movement_events = excluded.mouse_movement_events,
                     mouse_distance = excluded.mouse_distance,
                     active_seconds = excluded.active_seconds,
+                    wait_seconds = excluded.wait_seconds,
                     idle_seconds = excluded.idle_seconds,
                     key_counts = excluded.key_counts;
             ";
@@ -198,6 +211,7 @@ public class SqliteStorageService : IStorageService
             cmd.Parameters.AddWithValue("$mouse_movement_events", summary.MouseMovementEvents);
             cmd.Parameters.AddWithValue("$mouse_distance", summary.MouseDistance);
             cmd.Parameters.AddWithValue("$active_seconds", summary.ActiveSeconds);
+            cmd.Parameters.AddWithValue("$wait_seconds", summary.WaitSeconds);
             cmd.Parameters.AddWithValue("$idle_seconds", summary.IdleSeconds);
             cmd.Parameters.AddWithValue("$session_id", summary.SessionId);
             cmd.Parameters.AddWithValue("$is_synced", summary.IsSynced ? 1 : 0);
@@ -227,7 +241,7 @@ public class SqliteStorageService : IStorageService
                        left_clicks, right_clicks, middle_clicks, x1_clicks, x2_clicks,
                        keyboard_presses, vertical_scroll, horizontal_scroll,
                        mouse_movement_events, mouse_distance, active_seconds, idle_seconds,
-                       session_id, is_synced, created_at, key_counts
+                       session_id, is_synced, created_at, key_counts, wait_seconds
                 FROM activity_summaries
                 WHERE is_synced = 0
                 ORDER BY bucket_start ASC
@@ -542,6 +556,11 @@ public class SqliteStorageService : IStorageService
             {
                 // Fallback to empty
             }
+        }
+
+        if (reader.FieldCount > 21 && !reader.IsDBNull(21))
+        {
+            summary.WaitSeconds = reader.GetInt32(21);
         }
 
         return summary;

@@ -10,6 +10,8 @@ import {
   Navigation,
   RefreshCw,
   CheckCircle2,
+  Zap,
+  Brain,
 } from "lucide-react";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { ActivityTrendChart } from "@/components/charts/ActivityTrendChart";
@@ -160,8 +162,36 @@ export default function OverviewPage() {
         )}
       </div>
 
-      {/* Metric Cards Grid (6 primary metrics) */}
+      {/* Metric Cards Grid (3-Tier Developer Telemetry) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <MetricCard
+          title="Total Productive Time"
+          value={formatDuration(metrics.productiveSeconds)}
+          subtitle={`${metrics.productivePercentage}% of tracked time`}
+          icon={Zap}
+          color="emerald"
+        />
+        <MetricCard
+          title="Direct Active Work"
+          value={formatDuration(metrics.activeSeconds)}
+          subtitle="Typing, clicking, scrolling"
+          icon={Clock}
+          color="sky"
+        />
+        <MetricCard
+          title="AI & Build Wait"
+          value={formatDuration(metrics.waitSeconds)}
+          subtitle="Prompt response & reading"
+          icon={Brain}
+          color="purple"
+        />
+        <MetricCard
+          title="Break / Away Time"
+          value={formatDuration(metrics.idleSeconds)}
+          subtitle="Away from desk (>3m AFK)"
+          icon={Coffee}
+          color="amber"
+        />
         <MetricCard
           title="Mouse Clicks"
           value={metrics.totalClicks.toLocaleString()}
@@ -172,36 +202,8 @@ export default function OverviewPage() {
         <MetricCard
           title="Key Presses"
           value={metrics.totalKeyboard.toLocaleString()}
-          subtitle="Key-down press count"
+          subtitle="Hardware key presses"
           icon={Keyboard}
-          color="purple"
-        />
-        <MetricCard
-          title="Active Time"
-          value={formatDuration(metrics.activeSeconds)}
-          subtitle="User actively working"
-          icon={Clock}
-          color="emerald"
-        />
-        <MetricCard
-          title="Idle Time"
-          value={formatDuration(metrics.idleSeconds)}
-          subtitle="Away (&gt;5 min inactive)"
-          icon={Coffee}
-          color="amber"
-        />
-        <MetricCard
-          title="Scroll Activity"
-          value={metrics.verticalScroll.toLocaleString()}
-          subtitle="Vertical &amp; horiz delta"
-          icon={Scroll}
-          color="rose"
-        />
-        <MetricCard
-          title="Movement"
-          value={`${(metrics.mouseDistance / 1000).toFixed(1)}k px`}
-          subtitle="Relative distance"
-          icon={Navigation}
           color="purple"
         />
       </div>

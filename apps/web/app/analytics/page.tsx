@@ -77,8 +77,9 @@ export default function ActivityAnalyticsPage() {
   ];
 
   const timeRatioData = [
-    { name: "Active Time", value: Math.round(totalActive / 60) || 0, color: "#10b981" },
-    { name: "Idle Time", value: Math.round(totalIdle / 60) || 0, color: "#f59e0b" },
+    { name: "Direct Active", value: Math.round(metrics.activeSeconds / 60) || 0, color: "#10b981" },
+    { name: "AI & Build Wait", value: Math.round(metrics.waitSeconds / 60) || 0, color: "#8b5cf6" },
+    { name: "Break / Away", value: Math.round(metrics.idleSeconds / 60) || 0, color: "#f59e0b" },
   ];
 
   const totalInputs = totalClicks + totalKeys;
@@ -297,20 +298,20 @@ export default function ActivityAnalyticsPage() {
           </div>
         </div>
 
-        {/* Active vs Idle Time */}
+        {/* 3-Tier Productivity Time Breakdown */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">
           <div className="flex items-center justify-between mb-2">
             <div>
-              <h2 className="text-base font-semibold text-white">Active vs. Idle Time</h2>
-              <p className="text-xs text-slate-400 mt-0.5">Productive engagement vs idle computer time today</p>
+              <h2 className="text-base font-semibold text-white">3-Tier Time Distribution</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Active input, AI/build wait &amp; review, and breaks</p>
             </div>
             <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-md border border-emerald-500/20">
-              {metrics.activePercentage}% Active
+              {metrics.productivePercentage}% Productive Focus
             </span>
           </div>
           <RatioPieChart data={timeRatioData} />
           <div className="mt-4 text-center text-xs text-slate-400">
-            {Math.round(totalActive / 60)} min Active vs {Math.round(totalIdle / 60)} min Idle
+            {formatDuration(metrics.productiveSeconds)} Work ({formatDuration(metrics.activeSeconds)} Active + {formatDuration(metrics.waitSeconds)} Wait) vs {formatDuration(metrics.idleSeconds)} Away
           </div>
         </div>
       </div>

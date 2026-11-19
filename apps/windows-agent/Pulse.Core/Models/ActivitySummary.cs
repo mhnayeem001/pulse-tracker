@@ -52,6 +52,9 @@ public class ActivitySummary
     [JsonPropertyName("active_seconds")]
     public int ActiveSeconds { get; set; }
 
+    [JsonPropertyName("wait_seconds")]
+    public int WaitSeconds { get; set; }
+
     [JsonPropertyName("idle_seconds")]
     public int IdleSeconds { get; set; }
 

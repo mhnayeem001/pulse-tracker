@@ -153,25 +153,84 @@ export async function fetchLiveSummaries(range: TimeRange = "today", deviceId?: 
 }
 
 /**
- * Normalizes active vs idle time per 60-second summary:
- * - If 0 clicks, 0 keys, and 0 mouse moves: user was not using computer -> 100% IDLE (0s active, 60s idle).
- * - If user interacted: ensures active + idle equals 60s realistically.
+ * 3-Tier Developer Productivity Telemetry:
+ * - Direct Active Time: Hands-on typing, clicking, mouse movements (micro-pauses <= 15s).
+ * - AI & Build Wait Time: Prompt response wait, backend compilation, reading & review (15s - 180s).
+ * - Away / True Break Time: User stepped away (>180s inactivity, screen locked Win+L, or sleep).
+ *
+ * Total Productive Work = Direct Active + AI & Build Wait Time.
  */
-export function getCleanSummaryActivity(s: ActivitySummary): { activeSeconds: number; idleSeconds: number } {
+export function get3TierActivity(s: ActivitySummary): {
+  activeSeconds: number;
+  waitSeconds: number;
+  idleSeconds: number;
+  productiveSeconds: number;
+} {
+  // If agent already persisted explicit wait_seconds (new version)
+  if (s.wait_seconds !== undefined && s.wait_seconds !== null && s.wait_seconds >= 0) {
+    const act = Math.min(60, Math.max(0, s.active_seconds || 0));
+    const wt = Math.min(60, Math.max(0, s.wait_seconds));
+    const idl = Math.min(60, Math.max(0, s.idle_seconds || 0));
+    
+    let finalActive = act;
+    let finalWait = wt;
+    let finalIdle = idl;
+    const sum = finalActive + finalWait + finalIdle;
+    if (sum !== 60 && sum > 0) {
+      finalIdle = Math.max(0, 60 - (finalActive + finalWait));
+    }
+    return {
+      activeSeconds: finalActive,
+      waitSeconds: finalWait,
+      idleSeconds: finalIdle,
+      productiveSeconds: finalActive + finalWait,
+    };
+  }
+
+  // Backwards compatibility for existing / historical records
   const clicks = (s.left_clicks || 0) + (s.right_clicks || 0) + (s.middle_clicks || 0) + (s.x1_clicks || 0) + (s.x2_clicks || 0);
   const keys = s.keyboard_presses || 0;
   const moves = s.mouse_movement_events || 0;
   const inputs = clicks + keys + moves;
 
   if (inputs === 0) {
-    return { activeSeconds: 0, idleSeconds: 60 };
+    if ((s.active_seconds || 0) > 0) {
+      const wait = Math.min(60, Math.max(0, s.active_seconds));
+      return {
+        activeSeconds: 0,
+        waitSeconds: wait,
+        idleSeconds: Math.max(0, 60 - wait),
+        productiveSeconds: wait,
+      };
+    }
+    return { activeSeconds: 0, waitSeconds: 0, idleSeconds: 60, productiveSeconds: 0 };
   }
 
   const rawActive = Math.min(60, Math.max(0, s.active_seconds || 0));
-  const activeSeconds = rawActive > 0 ? rawActive : Math.min(60, Math.max(10, Math.round(clicks * 2 + keys * 0.5)));
-  const idleSeconds = Math.max(0, 60 - activeSeconds);
+  const estimatedDirectActive = Math.min(60, Math.max(10, Math.round(clicks * 2 + keys * 0.5)));
+  const activeSeconds = rawActive > 0 ? Math.min(rawActive, estimatedDirectActive) : estimatedDirectActive;
+  const waitSeconds = Math.max(0, (rawActive > 0 ? rawActive : 60) - activeSeconds);
+  const idleSeconds = Math.max(0, 60 - (activeSeconds + waitSeconds));
 
-  return { activeSeconds, idleSeconds };
+  return {
+    activeSeconds,
+    waitSeconds,
+    idleSeconds,
+    productiveSeconds: activeSeconds + waitSeconds,
+  };
+}
+
+/**
+ * Normalizes active vs idle time per 60-second summary:
+ * - If 0 clicks, 0 keys, and 0 mouse moves: user was not using computer -> 100% IDLE (0s active, 60s idle).
+ * - If user interacted: ensures active + idle equals 60s realistically.
+ */
+export function getCleanSummaryActivity(s: ActivitySummary): { activeSeconds: number; idleSeconds: number } {
+  const threeTier = get3TierActivity(s);
+  return {
+    activeSeconds: threeTier.productiveSeconds,
+    idleSeconds: threeTier.idleSeconds,
+  };
 }
 
 /**
@@ -183,7 +242,8 @@ export function calculateMetrics(summaries: ActivitySummary[]): DashboardMetrics
   let middleClicks = 0;
   let xClicks = 0;
   let keyboard = 0;
-  let activeSec = 0;
+  let directActiveSec = 0;
+  let waitSec = 0;
   let idleSec = 0;
   let vScroll = 0;
   let distance = 0;
@@ -195,9 +255,10 @@ export function calculateMetrics(summaries: ActivitySummary[]): DashboardMetrics
     xClicks += (s.x1_clicks || 0) + (s.x2_clicks || 0);
     keyboard += s.keyboard_presses || 0;
 
-    const clean = getCleanSummaryActivity(s);
-    activeSec += clean.activeSeconds;
-    idleSec += clean.idleSeconds;
+    const threeTier = get3TierActivity(s);
+    directActiveSec += threeTier.activeSeconds;
+    waitSec += threeTier.waitSeconds;
+    idleSec += threeTier.idleSeconds;
 
     vScroll += Math.abs(s.vertical_scroll || 0);
     distance += s.mouse_distance || 0;
@@ -205,8 +266,10 @@ export function calculateMetrics(summaries: ActivitySummary[]): DashboardMetrics
 
   const totalClicks = leftClicks + rightClicks + middleClicks + xClicks;
   const totalActions = totalClicks + keyboard;
-  const totalDuration = activeSec + idleSec;
-  const activePercentage = totalDuration > 0 ? (activeSec / totalDuration) * 100 : 0;
+  const productiveSec = directActiveSec + waitSec;
+  const totalDuration = productiveSec + idleSec;
+  const activePercentage = totalDuration > 0 ? (directActiveSec / totalDuration) * 100 : 0;
+  const productivePercentage = totalDuration > 0 ? (productiveSec / totalDuration) * 100 : 0;
 
   return {
     totalClicks,
@@ -216,11 +279,14 @@ export function calculateMetrics(summaries: ActivitySummary[]): DashboardMetrics
     xClicks,
     totalKeyboard: keyboard,
     totalActions,
-    activeSeconds: activeSec,
+    activeSeconds: directActiveSec,
+    waitSeconds: waitSec,
+    productiveSeconds: productiveSec,
     idleSeconds: idleSec,
     verticalScroll: vScroll,
     mouseDistance: Math.round(distance),
     activePercentage: Math.round(activePercentage * 10) / 10,
+    productivePercentage: Math.round(productivePercentage * 10) / 10,
   };
 }
 
@@ -294,15 +360,17 @@ export function generateDailyFromSummaries(summaries: ActivitySummary[], devices
     let officeClicks = 0;
     let laptopKeys = 0;
     let officeKeys = 0;
-    let activeSec = 0;
+    let directActiveSec = 0;
+    let waitSec = 0;
     let idleSec = 0;
 
     for (const s of daySummaries) {
       const clicks = (s.left_clicks || 0) + (s.right_clicks || 0) + (s.middle_clicks || 0) + (s.x1_clicks || 0) + (s.x2_clicks || 0);
       const keys = s.keyboard_presses || 0;
-      const clean = getCleanSummaryActivity(s);
-      activeSec += clean.activeSeconds;
-      idleSec += clean.idleSeconds;
+      const threeTier = get3TierActivity(s);
+      directActiveSec += threeTier.activeSeconds;
+      waitSec += threeTier.waitSeconds;
+      idleSec += threeTier.idleSeconds;
 
       if (laptopDevice && s.device_id === laptopDevice.id) {
         laptopClicks += clicks;
@@ -325,7 +393,9 @@ export function generateDailyFromSummaries(summaries: ActivitySummary[], devices
       laptopKeyboard: laptopKeys,
       officeKeyboard: officeKeys,
       totalKeyboard: laptopKeys + officeKeys,
-      activeSeconds: Math.round(activeSec),
+      activeSeconds: Math.round(directActiveSec),
+      waitSeconds: Math.round(waitSec),
+      productiveSeconds: Math.round(directActiveSec + waitSec),
       idleSeconds: Math.round(idleSec),
     });
   }
