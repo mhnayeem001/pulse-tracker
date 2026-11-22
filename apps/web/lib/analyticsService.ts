@@ -237,6 +237,112 @@ export function get3TierActivity(s: ActivitySummary): {
 }
 
 /**
+ * Smart Cross-Device Timeline Fusion:
+ * Unifies multi-device telemetry at the exact same minute into a single human wall-clock timeline.
+ * - Sums all physical inputs (clicks, keypresses, scrolls, distance) so no work is lost.
+ * - Caps active time per minute to human wall-clock limit (max 60s per minute).
+ * - Solves the "double machine-hours" problem when working on PC and Laptop simultaneously.
+ */
+export function unifySummariesTimeline(summaries: ActivitySummary[]): ActivitySummary[] {
+  if (!summaries || summaries.length <= 1) return summaries || [];
+
+  const bucketMap = new Map<string, ActivitySummary[]>();
+  for (const s of summaries) {
+    const list = bucketMap.get(s.bucket_start) || [];
+    list.push(s);
+    bucketMap.set(s.bucket_start, list);
+  }
+
+  // If there are no overlapping minutes (single device), return early
+  let hasOverlap = false;
+  Array.from(bucketMap.values()).forEach((list) => {
+    if (list.length > 1) {
+      hasOverlap = true;
+    }
+  });
+  if (!hasOverlap) return summaries;
+
+  const unifiedList: ActivitySummary[] = [];
+
+  for (const [bucketStart, records] of Array.from(bucketMap.entries())) {
+    if (records.length === 1) {
+      unifiedList.push(records[0]);
+      continue;
+    }
+
+    let totalLeft = 0;
+    let totalRight = 0;
+    let totalMiddle = 0;
+    let totalX1 = 0;
+    let totalX2 = 0;
+    let totalKeyboard = 0;
+    let totalVScroll = 0;
+    let totalHScroll = 0;
+    let totalMouseMove = 0;
+    let totalMouseDist = 0;
+    const mergedKeyCounts: Record<string, number> = {};
+
+    let maxDirectActive = 0;
+    let maxWait = 0;
+
+    for (const r of records) {
+      totalLeft += r.left_clicks || 0;
+      totalRight += r.right_clicks || 0;
+      totalMiddle += r.middle_clicks || 0;
+      totalX1 += r.x1_clicks || 0;
+      totalX2 += r.x2_clicks || 0;
+      totalKeyboard += r.keyboard_presses || 0;
+      totalVScroll += r.vertical_scroll || 0;
+      totalHScroll += r.horizontal_scroll || 0;
+      totalMouseMove += r.mouse_movement_events || 0;
+      totalMouseDist += r.mouse_distance || 0;
+
+      if (r.key_counts && typeof r.key_counts === "object") {
+        for (const [k, v] of Object.entries(r.key_counts)) {
+          if (typeof v === "number") {
+            mergedKeyCounts[k] = (mergedKeyCounts[k] || 0) + v;
+          }
+        }
+      }
+
+      const threeTier = get3TierActivity(r);
+      maxDirectActive = Math.max(maxDirectActive, threeTier.activeSeconds);
+      maxWait = Math.max(maxWait, threeTier.waitSeconds);
+    }
+
+    const fusedActive = Math.min(60, maxDirectActive);
+    const fusedWait = Math.min(60 - fusedActive, maxWait);
+    const fusedIdle = Math.max(0, 60 - (fusedActive + fusedWait));
+
+    unifiedList.push({
+      id: `unified-${bucketStart}`,
+      user_id: records[0].user_id,
+      device_id: "all",
+      bucket_start: bucketStart,
+      bucket_end: records[0].bucket_end,
+      left_clicks: totalLeft,
+      right_clicks: totalRight,
+      middle_clicks: totalMiddle,
+      x1_clicks: totalX1,
+      x2_clicks: totalX2,
+      keyboard_presses: totalKeyboard,
+      vertical_scroll: totalVScroll,
+      horizontal_scroll: totalHScroll,
+      mouse_movement_events: totalMouseMove,
+      mouse_distance: totalMouseDist,
+      active_seconds: fusedActive,
+      wait_seconds: fusedWait,
+      idle_seconds: fusedIdle,
+      session_id: "unified",
+      created_at: records[0].created_at,
+      key_counts: mergedKeyCounts,
+    });
+  }
+
+  return unifiedList.sort((a, b) => new Date(a.bucket_start).getTime() - new Date(b.bucket_start).getTime());
+}
+
+/**
  * Normalizes active vs idle time per 60-second summary:
  * - If 0 clicks, 0 keys, and 0 mouse moves: user was not using computer -> 100% IDLE (0s active, 60s idle).
  * - If user interacted: ensures active + idle equals 60s realistically.
@@ -253,6 +359,7 @@ export function getCleanSummaryActivity(s: ActivitySummary): { activeSeconds: nu
  * Calculate totals and high-level metrics from real summaries
  */
 export function calculateMetrics(summaries: ActivitySummary[]): DashboardMetrics {
+  const targetSummaries = unifySummariesTimeline(summaries);
   let leftClicks = 0;
   let rightClicks = 0;
   let middleClicks = 0;
@@ -264,7 +371,7 @@ export function calculateMetrics(summaries: ActivitySummary[]): DashboardMetrics
   let vScroll = 0;
   let distance = 0;
 
-  for (const s of summaries) {
+  for (const s of targetSummaries) {
     leftClicks += s.left_clicks || 0;
     rightClicks += s.right_clicks || 0;
     middleClicks += s.middle_clicks || 0;
@@ -310,12 +417,13 @@ export function calculateMetrics(summaries: ActivitySummary[]): DashboardMetrics
  * 24-hour distribution from real summaries (grouped by Asia/Dhaka hour)
  */
 export function generateHourlyFromSummaries(summaries: ActivitySummary[]): HourlyStat[] {
+  const targetSummaries = unifySummariesTimeline(summaries);
   const map = new Map<number, { clicks: number; keyboard: number; activeSec: number }>();
   for (let i = 0; i < 24; i++) {
     map.set(i, { clicks: 0, keyboard: 0, activeSec: 0 });
   }
 
-  for (const s of summaries) {
+  for (const s of targetSummaries) {
     const d = new Date(s.bucket_start);
     const dhakaHour = parseInt(
       d.toLocaleTimeString("en-US", { timeZone: "Asia/Dhaka", hour: "2-digit", hour12: false }),
@@ -380,13 +488,18 @@ export function generateDailyFromSummaries(summaries: ActivitySummary[], devices
     let waitSec = 0;
     let idleSec = 0;
 
-    for (const s of daySummaries) {
-      const clicks = (s.left_clicks || 0) + (s.right_clicks || 0) + (s.middle_clicks || 0) + (s.x1_clicks || 0) + (s.x2_clicks || 0);
-      const keys = s.keyboard_presses || 0;
+    const dayUnified = unifySummariesTimeline(daySummaries);
+
+    for (const s of dayUnified) {
       const threeTier = get3TierActivity(s);
       directActiveSec += threeTier.activeSeconds;
       waitSec += threeTier.waitSeconds;
       idleSec += threeTier.idleSeconds;
+    }
+
+    for (const s of daySummaries) {
+      const clicks = (s.left_clicks || 0) + (s.right_clicks || 0) + (s.middle_clicks || 0) + (s.x1_clicks || 0) + (s.x2_clicks || 0);
+      const keys = s.keyboard_presses || 0;
 
       if (laptopDevice && s.device_id === laptopDevice.id) {
         laptopClicks += clicks;
@@ -429,10 +542,11 @@ export function generateDailyTrends(days: number = 7): DailyStat[] {
  * Populated dynamically with actual activity from summaries!
  */
 export function generateHeatmapGrid(metric: "clicks" | "keyboard" | "actions" | "active" = "actions", summaries: ActivitySummary[] = []): HeatmapCell[] {
+  const targetSummaries = unifySummariesTimeline(summaries);
   const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const matrix: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
 
-  for (const s of summaries) {
+  for (const s of targetSummaries) {
     const d = new Date(s.bucket_start);
     const jsDay = d.getDay();
     const dayIndex = jsDay === 0 ? 6 : jsDay - 1;
